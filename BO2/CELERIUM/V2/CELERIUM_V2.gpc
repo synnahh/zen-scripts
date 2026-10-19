@@ -1,0 +1,1259 @@
+/* ==================================================================
+   C E L E R I U M
+   ------------------------------------------------------------------
+   Black Ops II  //  Cronus Zen / GPC                     v2.0
+   OFFLINE / BOT-LOBBY / CAMPAIGN / ZOMBIES BUILD
+   ------------------------------------------------------------------
+   MENU        : hold L2 + tap OPTIONS
+   MASTER KILL : hold L2 + tap SHARE  (all mods on/off instantly)
+
+   IN MENU:
+     D-UP / D-DOWN ....... move cursor
+     D-LEFT / D-RIGHT .... change value (hold to fast-scroll)
+     L1 / R1 ............. previous / next page
+     CROSS ............... toggle / run action
+     TRIANGLE ............ reset this line to default
+     CIRCLE .............. save + exit
+   ------------------------------------------------------------------
+   v2.0 CHANGES
+     - boot animation is now a DSR-50 scanning in line by line
+     - "OFFLINE" -> "ARMING" on the boot progress bar
+     - OLED spacing reworked: 5 rows at 10px pitch instead of 6 at 8px,
+       so nothing touches. Menu is 10 pages of 3-5 lines.
+     - labels widened to 10 chars, value column moved right to 76
+   ------------------------------------------------------------------
+   GPC NOTES: no local variables exist - every working variable is
+   declared at top level and prefixed by its owning function. Strings
+   live in the data section; print() takes an address, not a literal,
+   and there is no %d, so numbers go through print_num().
+
+   SCREEN BUDGET (128 x 64, small font 7px wide / 8px tall):
+     header   y 0..11
+     rows     y 15, 25, 35, 45, 55   (10px pitch, 2px clear between)
+     labels   x 3   (max 10 chars -> ends at 73)
+     values   x 76  (max  6 chars -> ends at 118)
+     scrollbr x 121..125
+   ================================================================== */
+
+
+/* ---------------- BUTTON LAYOUT (edit me) ---------------- */
+define BTN_FIRE    = PS4_R2;
+define BTN_ADS     = PS4_L2;
+define BTN_MELEE   = PS4_R3;
+define BTN_SPRINT  = PS4_L3;
+define BTN_JUMP    = PS4_CROSS;
+define BTN_CROUCH  = PS4_CIRCLE;
+define BTN_RELOAD  = PS4_SQUARE;
+define BTN_SWAP    = PS4_TRIANGLE;
+define BTN_MENU    = PS4_OPTIONS;
+define BTN_MASTER  = PS4_SHARE;
+
+define STK_RX = PS4_RX;
+define STK_RY = PS4_RY;
+define STK_LX = PS4_LX;
+define STK_LY = PS4_LY;
+
+/* ---------------- MENU NAVIGATION ---------------- */
+define NAV_UP    = PS4_UP;
+define NAV_DOWN  = PS4_DOWN;
+define NAV_LEFT  = PS4_LEFT;
+define NAV_RIGHT = PS4_RIGHT;
+define NAV_PGL   = PS4_L1;
+define NAV_PGR   = PS4_R1;
+define NAV_OK    = PS4_CROSS;
+define NAV_DEF   = PS4_TRIANGLE;
+define NAV_EXIT  = PS4_CIRCLE;
+
+/* ---------------- OPTION IDs ----------------
+   The ID is also the index into LBL[]. Pages take contiguous
+   runs of IDs, so the order below IS the menu order. ---------- */
+define O_AA_MODE    = 0;      /* p1 AIM ASSIST */
+define O_AA_POWER   = 1;
+define O_AA_SPEED   = 2;
+define O_AA_ACTIVE  = 3;
+define O_AA_HIP     = 4;
+
+define O_SNAP_ON    = 5;      /* p2 AIM SNAP */
+define O_SNAP_PULL  = 6;
+define O_SNAP_DELAY = 7;
+define O_AUTOFOCUS  = 8;
+
+define O_AR_ON      = 9;      /* p3 RECOIL */
+define O_AR_VERT    = 10;
+define O_AR_HORZ    = 11;
+define O_AR_RAMP    = 12;
+define O_AR_DELAY   = 13;
+
+define O_RF_ON      = 14;     /* p4 RAPID FIRE */
+define O_RF_HOLD    = 15;
+define O_RF_REST    = 16;
+define O_RF_ADS     = 17;
+
+define O_JIT_MODE   = 18;     /* p5 JITTER */
+define O_JIT_HOLD   = 19;
+define O_JIT_REST   = 20;
+
+define O_DROP       = 21;     /* p6 SHOT MODS */
+define O_CROUCHS    = 22;
+define O_JUMPS      = 23;
+
+define O_SPRINT     = 24;     /* p7 MOVEMENT */
+define O_YYCAN      = 25;
+define O_BHOP       = 26;
+
+define O_QS_ON      = 27;     /* p8 SCOPE/TRIG */
+define O_QS_DELAY   = 28;
+define O_HAIR       = 29;
+define O_TSTOP      = 30;
+define O_AR_DZ      = 31;
+
+define O_RELCAN     = 32;     /* p9 EXTRAS */
+define O_MELEE      = 33;
+define O_MEL_RATE   = 34;
+define O_RUMBLE     = 35;
+define O_ANIM       = 36;
+
+define O_PRESET     = 37;     /* p10 SYSTEM */
+define O_APPLY      = 38;
+define O_SAVE       = 39;
+define O_RESET      = 40;
+
+define OPT_N  = 41;
+define PAGE_N = 10;
+
+/* ---------------- VALUE TYPES ---------------- */
+define T_NUM    = 0;
+define T_ONOFF  = 1;
+define T_AAMODE = 2;
+define T_ACTIVE = 3;
+define T_JIT    = 4;
+define T_TRIG   = 5;
+define T_PRESET = 6;
+define T_ACT    = 7;
+
+/* ---------------- ASCII ---------------- */
+define CH_ZERO  = 48;
+define CH_MINUS = 45;
+define CH_SLASH = 47;
+
+
+/* ==================================================================
+   DATA SECTION - all on-screen text.
+   Labels max 10 chars, values max 6, so the two columns never touch.
+   ================================================================== */
+const string LBL[] = {
+    "AA MODE",    "AA POWER",   "AA SPEED",   "TRIGGER",    "HIP ASSIST",
+    "SNAP AIM",   "SNAP PULL",  "SNAP DELAY", "AUTO FOCUS",
+    "ENABLE",     "VERTICAL",   "HORIZONTAL", "RAMP UP",    "START DLY",
+    "ENABLE",     "HOLD ms",    "REST ms",    "ADS ONLY",
+    "MODE",       "HOLD ms",    "REST ms",
+    "DROP SHOT",  "CROUCH SHT", "JUMP SHOT",
+    "AUTOSPRINT", "YY CANCEL",  "BUNNY HOP",
+    "QUICKSCOPE", "QS DELAY",   "HAIR TRIG",  "TRIGGER PT", "DEADZONE",
+    "RELOAD CAN", "TURBO MELE", "MELEE RATE", "RUMBLE",     "OLED ANIM",
+    "PRESET",     "APPLY",      "SAVE ALL",   "RESET ALL"
+};
+
+const string PGN[] = {
+    "AIM ASSIST", "AIM SNAP",  "RECOIL",     "RAPID FIRE", "JITTER",
+    "SHOT MODS",  "MOVEMENT",  "SCOPE/TRIG", "EXTRAS",     "SYSTEM"
+};
+
+const string V_ONOFF[]  = { "OFF", "ON" };
+const string V_AAMODE[] = { "OFF", "CIRCLE", "PULSE", "STRAFE", "FULL" };
+const string V_ACTIVE[] = { "ADS", "FIRE", "A+F", "ALWAYS" };
+const string V_JIT[]    = { "OFF", "SWAP", "AKIMBO" };
+const string V_TRIG[]   = { "OFF", "FIRE", "ADS", "BOTH" };
+const string V_PRESET[] = { "CUSTOM", "AN-94", "MSMC", "SCORP",
+                            "FAL", "FIVE-7", "DSR-50", "SMR" };
+
+const string MSG[]  = { "RESET", "SAVED", "PRESET", "DISARM", "ARMED" };
+const string CHIP[] = { "AR", "RF", "JT", "AA", "DS", "QS", "TM" };
+
+const string T_TITLE[] = { "C E L E R I U M" };
+const string T_VER[]   = { "v2.0  ARMING" };
+const string T_OFF[]   = { "MODS OFF" };
+const string T_REARM[] = { "L2+SHARE = ARM" };
+const string T_GO[]    = { ">> GO" };
+const string T_AA[]    = { "AA" };
+const string T_AR[]    = { "AR" };
+const string T_RF[]    = { "RF" };
+const string T_JITR[]  = { "JITTER" };
+
+
+/* ==================================================================
+   OPTION TABLE
+   ================================================================== */
+int oval[41];
+int odef[41];
+int omin[41];
+int omax[41];
+int ostp[41];
+int otyp[41];
+
+int pg_first[10];
+int pg_count[10];
+
+
+/* ==================================================================
+   STATE  (GPC has no locals - everything lives here)
+   ================================================================== */
+int menu_open  = 0;
+int m_page     = 0;
+int m_item     = 0;
+int rep_t      = 0;
+int tick       = 0;
+int master_off = 0;
+
+int boot_t   = 0;
+int oled_t   = 0;
+int anim     = 0;
+int chip_x   = 0;
+int notif_t  = 0;
+int notif_id = 0;
+
+int ads_now  = 0;
+int fire_now = 0;
+
+int ar_timer = 0;
+int arv = 0;
+int arh = 0;
+int ar_ramp = 0;
+
+int aa_on  = 0;
+int aa_x   = 0;
+int aa_y   = 0;
+int aa_lx  = 0;
+int aa_pw  = 0;
+int aa_d   = 0;
+int aa_sp  = 8;
+int aa_sp2 = 4;
+int aa_spl = 16;
+
+int snap_y  = 0;
+int snap_dl = 60;
+
+int rf_h  = 30;
+int rf_r  = 30;
+int jt_h  = 20;
+int jt_r  = 20;
+int qs_d  = 220;
+int mel_r = 120;
+
+/* -- per-function working vars, prefixed by owner -- */
+int ar_rx, ar_ry, ar_dz;
+int mn_id;
+int aj_v;
+int ld_i;
+int sv_a, sv_b;
+int lo_c;
+int bt_x, bt_w, bt_i, bt_j;
+int id_r, id_s, id_cx, id_cy;
+int dm_i, dm_y, dm_id, dm_base, dm_n, dm_c;
+int dv_t;
+int pp_sel;
+int np_v, np_n, np_i, np_j, np_neg;
+int np_dig[6];
+
+
+/* ==================================================================
+   INIT
+   ================================================================== */
+init {
+    vm_tctrl(-8);            /* ~2ms VM tick: smooth recoil, fast jitter */
+    build_table();
+    build_pages();
+    load_defaults();
+    load_all();
+    boot_t = 0;
+    anim   = 0;
+}
+
+
+/* ==================================================================
+   MAIN
+   ================================================================== */
+main {
+    tick = get_rtime();
+
+    aa_pw  = oval[O_AA_POWER];
+    aa_d   = (aa_pw * 7) / 10;
+    aa_sp  = oval[O_AA_SPEED];
+    aa_sp2 = aa_sp / 2;
+    if(aa_sp2 < 2) aa_sp2 = 2;
+    aa_spl  = aa_sp * 2;
+    rf_h    = oval[O_RF_HOLD];
+    rf_r    = oval[O_RF_REST];
+    jt_h    = oval[O_JIT_HOLD];
+    jt_r    = oval[O_JIT_REST];
+    qs_d    = oval[O_QS_DELAY] * 10;
+    mel_r   = oval[O_MEL_RATE] * 10;
+    snap_dl = oval[O_SNAP_DELAY] * 10;
+
+    if(get_val(BTN_ADS) > 40) {
+        set_val(BTN_MENU, 0);
+        set_val(BTN_MASTER, 0);
+        if(event_press(BTN_MENU)) {
+            if(menu_open) {
+                save_all();
+                menu_open = 0;
+                flash(1);
+            } else {
+                menu_open = 1;
+                m_item = 0;
+                stop_all();
+            }
+            buzz();
+        }
+        if(event_press(BTN_MASTER)) {
+            master_off = !master_off;
+            stop_all();
+            if(master_off) flash(3);
+            else flash(4);
+            buzz();
+        }
+    }
+
+    if(menu_open) {
+        menu_logic();
+        block_all();
+    } else {
+        if(!master_off) run_mods();
+    }
+
+    oled_t = oled_t + tick;
+    if(oled_t >= 50) {
+        oled_t = 0;
+        anim = anim + 1;
+        if(anim > 2000) anim = 0;
+        if(boot_t < 3000) {
+            boot_t = boot_t + 50;
+            draw_boot();
+        } else if(menu_open) {
+            draw_menu();
+        } else if(notif_t > 0) {
+            draw_notif();
+        } else {
+            draw_idle();
+        }
+    }
+    if(notif_t > 0) notif_t = notif_t - tick;
+}
+
+
+/* ==================================================================
+   MOD ENGINE
+   ================================================================== */
+function run_mods() {
+
+    if(oval[O_HAIR]) {
+        if(get_val(BTN_FIRE) >= oval[O_TSTOP]) set_val(BTN_FIRE, 100);
+        else set_val(BTN_FIRE, 0);
+        if(get_val(BTN_ADS) >= oval[O_TSTOP]) set_val(BTN_ADS, 100);
+    }
+
+    ads_now  = 0;
+    fire_now = 0;
+    if(get_val(BTN_ADS)  > 40) ads_now  = 1;
+    if(get_val(BTN_FIRE) > 40) fire_now = 1;
+
+    /* ---------- ANTI-RECOIL ---------- */
+    if(oval[O_AR_ON] && fire_now) ar_timer = ar_timer + tick;
+    else ar_timer = 0;
+
+    if(oval[O_AR_ON] && fire_now && ar_timer >= (oval[O_AR_DELAY] * 10)) {
+        arv = oval[O_AR_VERT];
+        arh = oval[O_AR_HORZ];
+        if(oval[O_AR_RAMP]) {
+            ar_ramp = ar_timer - (oval[O_AR_DELAY] * 10);
+            if(ar_ramp > 700) ar_ramp = 700;
+            ar_ramp = 45 + ((ar_ramp * 55) / 700);
+            arv = (arv * ar_ramp) / 100;
+            arh = (arh * ar_ramp) / 100;
+        }
+        apply_recoil();
+    }
+
+    /* ---------- AIM ASSIST ENHANCER ---------- */
+    aa_on = 0;
+    if(oval[O_AA_MODE] > 0) {
+        if(oval[O_AA_ACTIVE] == 0 && ads_now) aa_on = 1;
+        if(oval[O_AA_ACTIVE] == 1 && fire_now) aa_on = 1;
+        if(oval[O_AA_ACTIVE] == 2 && ads_now && fire_now) aa_on = 1;
+        if(oval[O_AA_ACTIVE] == 3) aa_on = 1;
+        if(oval[O_AA_HIP] && fire_now && !ads_now) aa_on = 1;
+    }
+
+    if(aa_on) {
+        if(oval[O_AA_MODE] == 1) combo_run(AA_Circle);
+        if(oval[O_AA_MODE] == 2) combo_run(AA_Pulse);
+        if(oval[O_AA_MODE] == 3) combo_run(AA_Strafe);
+        if(oval[O_AA_MODE] == 4) {
+            combo_run(AA_Circle);
+            combo_run(AA_Strafe);
+        }
+    } else {
+        combo_stop(AA_Circle);
+        combo_stop(AA_Pulse);
+        combo_stop(AA_Strafe);
+        aa_x = 0; aa_y = 0; aa_lx = 0;
+    }
+
+    if(aa_x != 0 || aa_y != 0 || snap_y != 0) {
+        set_val(STK_RX, clampv(get_val(STK_RX) + aa_x));
+        set_val(STK_RY, clampv(get_val(STK_RY) + aa_y + snap_y));
+    }
+    if(aa_lx != 0) set_val(STK_LX, clampv(get_val(STK_LX) + aa_lx));
+
+    /* ---------- SNAP / SCOPE ---------- */
+    if(oval[O_SNAP_ON] && event_press(BTN_ADS)) combo_run(AimSnap);
+    if(combo_running(AimSnap)) set_val(BTN_ADS, 100);
+    if(oval[O_AUTOFOCUS] && ads_now) set_val(BTN_SPRINT, 100);
+    if(oval[O_QS_ON] && event_press(BTN_ADS)) combo_run(QuickScope);
+
+    /* ---------- JITTER (overrides rapid fire) ---------- */
+    if(oval[O_JIT_MODE] > 0 && fire_now) {
+        if(oval[O_JIT_MODE] == 1) combo_run(JitterSwap);
+        if(oval[O_JIT_MODE] == 2) combo_run(JitterAkimbo);
+    } else {
+        combo_stop(JitterSwap);
+        combo_stop(JitterAkimbo);
+        if(oval[O_RF_ON] && fire_now) {
+            if(!oval[O_RF_ADS] || ads_now) combo_run(RapidFire);
+            else combo_stop(RapidFire);
+        } else {
+            combo_stop(RapidFire);
+        }
+    }
+
+    /* ---------- SHOT MODS ---------- */
+    if(shot_trig(oval[O_DROP]))    combo_run(DropShot);
+    if(shot_trig(oval[O_CROUCHS])) combo_run(CrouchShot);
+    if(shot_hold(oval[O_JUMPS]))   combo_run(JumpShot);
+
+    /* ---------- MOVEMENT ---------- */
+    if(oval[O_BHOP] && get_val(BTN_JUMP)) combo_run(BunnyHop);
+    if(oval[O_SPRINT] && !ads_now && get_val(STK_LY) < -70) combo_run(AutoSprint);
+    if(oval[O_YYCAN] && get_val(BTN_SWAP)) combo_run(YYCancel);
+
+    /* ---------- EXTRAS ---------- */
+    if(oval[O_RELCAN] && event_press(BTN_RELOAD)) combo_run(ReloadCancel);
+    if(oval[O_MELEE] && get_val(BTN_MELEE)) combo_run(TurboMelee);
+}
+
+
+function apply_recoil() {
+    ar_rx = get_val(STK_RX);
+    ar_ry = get_val(STK_RY);
+    ar_dz = oval[O_AR_DZ];
+
+    if(arv != 0) {
+        if(ar_ry < arv && ar_ry > (0 - arv)) ar_ry = arv;
+    }
+    if(arh > 0) {
+        if(ar_rx < arh && ar_rx > (0 - arh)) ar_rx = arh;
+    }
+    if(arh < 0) {
+        if(ar_rx > arh && ar_rx < (0 - arh)) ar_rx = arh;
+    }
+
+    if(ar_dz > 0) {
+        if(ar_ry > 0 && ar_ry <  ar_dz)      ar_ry = ar_dz;
+        if(ar_ry < 0 && ar_ry > (0 - ar_dz)) ar_ry = 0 - ar_dz;
+        if(ar_rx > 0 && ar_rx <  ar_dz)      ar_rx = ar_dz;
+        if(ar_rx < 0 && ar_rx > (0 - ar_dz)) ar_rx = 0 - ar_dz;
+    }
+
+    set_val(STK_RX, clampv(ar_rx));
+    set_val(STK_RY, clampv(ar_ry));
+}
+
+function shot_trig(m) {
+    if(m == 1 && event_press(BTN_FIRE)) return 1;
+    if(m == 2 && event_press(BTN_ADS))  return 1;
+    if(m == 3) {
+        if(event_press(BTN_FIRE)) return 1;
+        if(event_press(BTN_ADS))  return 1;
+    }
+    return 0;
+}
+
+function shot_hold(m) {
+    if(m == 1 && get_val(BTN_FIRE) > 40) return 1;
+    if(m == 2 && get_val(BTN_ADS)  > 40) return 1;
+    if(m == 3) {
+        if(get_val(BTN_FIRE) > 40) return 1;
+        if(get_val(BTN_ADS)  > 40) return 1;
+    }
+    return 0;
+}
+
+function clampv(v) {
+    if(v >  100) return  100;
+    if(v < -100) return -100;
+    return v;
+}
+
+
+/* ==================================================================
+   COMBOS
+   ================================================================== */
+combo RapidFire {
+    set_val(BTN_FIRE, 100);
+    wait(rf_h);
+    set_val(BTN_FIRE, 0);
+    wait(rf_r);
+    set_val(BTN_FIRE, 0);
+}
+
+combo JitterSwap {
+    set_val(BTN_FIRE, 100);
+    set_val(BTN_SWAP, 0);
+    wait(jt_h);
+    set_val(BTN_FIRE, 0);
+    set_val(BTN_SWAP, 100);
+    wait(jt_r);
+    set_val(BTN_FIRE, 0);
+    set_val(BTN_SWAP, 0);
+}
+
+combo JitterAkimbo {
+    set_val(BTN_FIRE, 100);
+    set_val(BTN_ADS, 0);
+    wait(jt_h);
+    set_val(BTN_FIRE, 0);
+    set_val(BTN_ADS, 100);
+    wait(jt_r);
+}
+
+combo AA_Circle {
+    aa_x = aa_pw;    aa_y = 0;        wait(aa_sp);
+    aa_x = aa_d;     aa_y = aa_d;     wait(aa_sp);
+    aa_x = 0;        aa_y = aa_pw;    wait(aa_sp);
+    aa_x = 0-aa_d;   aa_y = aa_d;     wait(aa_sp);
+    aa_x = 0-aa_pw;  aa_y = 0;        wait(aa_sp);
+    aa_x = 0-aa_d;   aa_y = 0-aa_d;   wait(aa_sp);
+    aa_x = 0;        aa_y = 0-aa_pw;  wait(aa_sp);
+    aa_x = aa_d;     aa_y = 0-aa_d;   wait(aa_sp);
+}
+
+combo AA_Pulse {
+    aa_x = aa_pw;    aa_y = 0;  wait(aa_sp);
+    aa_x = 0;        aa_y = 0;  wait(aa_sp2);
+    aa_x = 0-aa_pw;  aa_y = 0;  wait(aa_sp);
+    aa_x = 0;        aa_y = 0;  wait(aa_sp2);
+}
+
+combo AA_Strafe {
+    aa_lx = aa_pw;    wait(aa_spl);
+    aa_lx = 0-aa_pw;  wait(aa_spl);
+}
+
+combo AimSnap {
+    set_val(BTN_ADS, 100);
+    wait(snap_dl);
+    set_val(BTN_ADS, 0);
+    wait(40);
+    set_val(BTN_ADS, 100);
+    snap_y = oval[O_SNAP_PULL];
+    wait(70);
+    snap_y = 0;
+    set_val(BTN_ADS, 100);
+    wait(30);
+}
+
+combo QuickScope {
+    set_val(BTN_ADS, 100);
+    wait(qs_d);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_FIRE, 100);
+    wait(70);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(90);
+}
+
+combo DropShot {
+    set_val(BTN_CROUCH, 100);
+    wait(400);
+    set_val(BTN_CROUCH, 0);
+    wait(200);
+}
+
+combo CrouchShot {
+    set_val(BTN_CROUCH, 100);
+    wait(60);
+    set_val(BTN_CROUCH, 0);
+    wait(220);
+}
+
+combo JumpShot {
+    set_val(BTN_JUMP, 100);
+    wait(70);
+    set_val(BTN_JUMP, 0);
+    wait(330);
+}
+
+combo BunnyHop {
+    set_val(BTN_JUMP, 100);
+    wait(60);
+    set_val(BTN_JUMP, 0);
+    wait(290);
+}
+
+combo AutoSprint {
+    set_val(BTN_SPRINT, 100);
+    wait(130);
+    set_val(BTN_SPRINT, 0);
+    wait(90);
+}
+
+combo YYCancel {
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(200);
+}
+
+combo ReloadCancel {
+    set_val(BTN_RELOAD, 100);
+    wait(60);
+    set_val(BTN_RELOAD, 0);
+    wait(680);
+    set_val(BTN_SWAP, 100);
+    wait(60);
+    set_val(BTN_SWAP, 0);
+    wait(60);
+    set_val(BTN_SWAP, 100);
+    wait(60);
+    set_val(BTN_SWAP, 0);
+    wait(60);
+}
+
+combo TurboMelee {
+    set_val(BTN_MELEE, 100);
+    wait(mel_r);
+    set_val(BTN_MELEE, 0);
+    wait(mel_r);
+}
+
+combo Buzz {
+    set_rumble(RUMBLE_A, 60);
+    wait(90);
+    reset_rumble();
+}
+
+function buzz() {
+    if(oval[O_RUMBLE]) combo_run(Buzz);
+}
+
+function stop_all() {
+    combo_stop(RapidFire);   combo_stop(JitterSwap);  combo_stop(JitterAkimbo);
+    combo_stop(AA_Circle);   combo_stop(AA_Pulse);    combo_stop(AA_Strafe);
+    combo_stop(AimSnap);     combo_stop(QuickScope);  combo_stop(DropShot);
+    combo_stop(CrouchShot);  combo_stop(JumpShot);    combo_stop(BunnyHop);
+    combo_stop(AutoSprint);  combo_stop(YYCancel);    combo_stop(ReloadCancel);
+    combo_stop(TurboMelee);
+    aa_x = 0; aa_y = 0; aa_lx = 0; snap_y = 0; ar_timer = 0;
+}
+
+function block_all() {
+    set_val(PS4_LX,0);  set_val(PS4_LY,0);  set_val(PS4_RX,0);  set_val(PS4_RY,0);
+    set_val(PS4_R1,0);  set_val(PS4_R2,0);  set_val(PS4_R3,0);
+    set_val(PS4_L1,0);  set_val(PS4_L2,0);  set_val(PS4_L3,0);
+    set_val(PS4_UP,0);  set_val(PS4_DOWN,0);
+    set_val(PS4_LEFT,0);set_val(PS4_RIGHT,0);
+    set_val(PS4_TRIANGLE,0); set_val(PS4_CIRCLE,0);
+    set_val(PS4_CROSS,0);    set_val(PS4_SQUARE,0);
+    set_val(PS4_OPTIONS,0);  set_val(PS4_SHARE,0);
+    set_val(PS4_TOUCH,0);    set_val(PS4_PS,0);
+}
+
+
+/* ==================================================================
+   MENU LOGIC
+   ================================================================== */
+function menu_logic() {
+    if(event_press(NAV_PGL)) {
+        m_page = m_page - 1;
+        if(m_page < 0) m_page = PAGE_N - 1;
+        m_item = 0;
+        buzz();
+    }
+    if(event_press(NAV_PGR)) {
+        m_page = m_page + 1;
+        if(m_page >= PAGE_N) m_page = 0;
+        m_item = 0;
+        buzz();
+    }
+    if(event_press(NAV_UP)) {
+        m_item = m_item - 1;
+        if(m_item < 0) m_item = pg_count[m_page] - 1;
+    }
+    if(event_press(NAV_DOWN)) {
+        m_item = m_item + 1;
+        if(m_item >= pg_count[m_page]) m_item = 0;
+    }
+
+    mn_id = pg_first[m_page] + m_item;
+
+    if(event_press(NAV_LEFT))  { adjust(mn_id, -1); rep_t = 0; }
+    if(event_press(NAV_RIGHT)) { adjust(mn_id,  1); rep_t = 0; }
+    if(event_press(NAV_OK))    { adjust(mn_id,  1); rep_t = 0; buzz(); }
+
+    if(get_val(NAV_LEFT) && get_ptime(NAV_LEFT) > 380) {
+        rep_t = rep_t + tick;
+        if(rep_t >= 55) { rep_t = 0; adjust(mn_id, -3); }
+    }
+    if(get_val(NAV_RIGHT) && get_ptime(NAV_RIGHT) > 380) {
+        rep_t = rep_t + tick;
+        if(rep_t >= 55) { rep_t = 0; adjust(mn_id, 3); }
+    }
+
+    if(event_press(NAV_DEF)) {
+        if(otyp[mn_id] != T_ACT) oval[mn_id] = odef[mn_id];
+        buzz();
+    }
+
+    if(event_press(NAV_EXIT)) {
+        save_all();
+        menu_open = 0;
+        flash(1);
+        buzz();
+    }
+}
+
+function adjust(id, dir) {
+    if(otyp[id] == T_ACT) {
+        do_action(id);
+    } else {
+        if(otyp[id] == T_ONOFF) {
+            oval[id] = !oval[id];
+        } else {
+            aj_v = oval[id] + (dir * ostp[id]);
+            if(aj_v > omax[id]) aj_v = omin[id];
+            if(aj_v < omin[id]) aj_v = omax[id];
+            oval[id] = aj_v;
+        }
+    }
+}
+
+function do_action(id) {
+    if(id == O_APPLY) { apply_preset(); flash(2); }
+    if(id == O_SAVE)  { save_all();     flash(1); }
+    if(id == O_RESET) { load_defaults(); save_all(); flash(0); }
+    buzz();
+}
+
+function flash(n) {
+    notif_id = n;
+    notif_t  = 900;
+}
+
+
+/* ==================================================================
+   WEAPON PRESETS
+   ================================================================== */
+function apply_preset() {
+    pp_sel = oval[O_PRESET];
+
+    if(pp_sel == 1) {                 /* AN-94 */
+        oval[O_AR_VERT]=24; oval[O_AR_HORZ]=2;  oval[O_AR_ON]=1;
+        oval[O_RF_ON]=0;    oval[O_JIT_MODE]=0;
+    }
+    if(pp_sel == 2) {                 /* MSMC */
+        oval[O_AR_VERT]=18; oval[O_AR_HORZ]=-3; oval[O_AR_ON]=1;
+        oval[O_RF_ON]=0;    oval[O_JIT_MODE]=0;
+    }
+    if(pp_sel == 3) {                 /* SCORPION EVO */
+        oval[O_AR_VERT]=30; oval[O_AR_HORZ]=0;  oval[O_AR_ON]=1;
+        oval[O_RF_ON]=0;    oval[O_JIT_MODE]=0;
+    }
+    if(pp_sel == 4) {                 /* FAL OSW */
+        oval[O_AR_VERT]=20; oval[O_AR_HORZ]=0;  oval[O_AR_ON]=1;
+        oval[O_RF_ON]=1;    oval[O_RF_HOLD]=28; oval[O_RF_REST]=28;
+        oval[O_JIT_MODE]=0;
+    }
+    if(pp_sel == 5) {                 /* FIVE-SEVEN */
+        oval[O_AR_VERT]=14; oval[O_AR_HORZ]=0;  oval[O_AR_ON]=1;
+        oval[O_RF_ON]=1;    oval[O_RF_HOLD]=22; oval[O_RF_REST]=22;
+        oval[O_JIT_MODE]=0;
+    }
+    if(pp_sel == 6) {                 /* DSR-50 */
+        oval[O_AR_VERT]=0;  oval[O_AR_HORZ]=0;  oval[O_AR_ON]=0;
+        oval[O_RF_ON]=0;    oval[O_JIT_MODE]=0;
+        oval[O_AUTOFOCUS]=1; oval[O_QS_ON]=1;   oval[O_SNAP_ON]=1;
+    }
+    if(pp_sel == 7) {                 /* SMR */
+        oval[O_AR_VERT]=26; oval[O_AR_HORZ]=0;  oval[O_AR_ON]=1;
+        oval[O_RF_ON]=0;
+        oval[O_JIT_MODE]=1; oval[O_JIT_HOLD]=18; oval[O_JIT_REST]=18;
+    }
+}
+
+
+/* ==================================================================
+   TABLE SETUP
+   ================================================================== */
+function reg(rid, rmn, rmx, rst, rty, rdv) {
+    omin[rid] = rmn;  omax[rid] = rmx;  ostp[rid] = rst;
+    otyp[rid] = rty;  odef[rid] = rdv;
+}
+
+function build_table() {
+    reg(O_AA_MODE,    0,   4, 1, T_AAMODE, 1);
+    reg(O_AA_POWER,   0,  40, 1, T_NUM,   12);
+    reg(O_AA_SPEED,   4,  40, 1, T_NUM,    8);
+    reg(O_AA_ACTIVE,  0,   3, 1, T_ACTIVE, 0);
+    reg(O_AA_HIP,     0,   1, 1, T_ONOFF,  1);
+
+    reg(O_SNAP_ON,    0,   1, 1, T_ONOFF,  0);
+    reg(O_SNAP_PULL,  0,  40, 1, T_NUM,   14);
+    reg(O_SNAP_DELAY, 2,  30, 1, T_NUM,    6);
+    reg(O_AUTOFOCUS,  0,   1, 1, T_ONOFF,  1);
+
+    reg(O_AR_ON,      0,   1, 1, T_ONOFF,  1);
+    reg(O_AR_VERT,    0, 100, 1, T_NUM,   22);
+    reg(O_AR_HORZ,  -50,  50, 1, T_NUM,    0);
+    reg(O_AR_RAMP,    0,   1, 1, T_ONOFF,  0);
+    reg(O_AR_DELAY,   0,  50, 1, T_NUM,    0);
+
+    reg(O_RF_ON,      0,   1, 1, T_ONOFF,  0);
+    reg(O_RF_HOLD,   10, 120, 2, T_NUM,   30);
+    reg(O_RF_REST,   10, 120, 2, T_NUM,   30);
+    reg(O_RF_ADS,     0,   1, 1, T_ONOFF,  0);
+
+    reg(O_JIT_MODE,   0,   2, 1, T_JIT,    0);
+    reg(O_JIT_HOLD,  10,  60, 2, T_NUM,   20);
+    reg(O_JIT_REST,  10,  60, 2, T_NUM,   20);
+
+    reg(O_DROP,       0,   3, 1, T_TRIG,   0);
+    reg(O_CROUCHS,    0,   3, 1, T_TRIG,   0);
+    reg(O_JUMPS,      0,   3, 1, T_TRIG,   0);
+
+    reg(O_SPRINT,     0,   1, 1, T_ONOFF,  1);
+    reg(O_YYCAN,      0,   1, 1, T_ONOFF,  0);
+    reg(O_BHOP,       0,   1, 1, T_ONOFF,  0);
+
+    reg(O_QS_ON,      0,   1, 1, T_ONOFF,  0);
+    reg(O_QS_DELAY,   5,  60, 1, T_NUM,   22);
+    reg(O_HAIR,       0,   1, 1, T_ONOFF,  1);
+    reg(O_TSTOP,      5,  95, 5, T_NUM,   90);
+    reg(O_AR_DZ,      0,  40, 1, T_NUM,    0);
+
+    reg(O_RELCAN,     0,   1, 1, T_ONOFF,  0);
+    reg(O_MELEE,      0,   1, 1, T_ONOFF,  0);
+    reg(O_MEL_RATE,   4,  25, 1, T_NUM,   12);
+    reg(O_RUMBLE,     0,   1, 1, T_ONOFF,  1);
+    reg(O_ANIM,       0,   1, 1, T_ONOFF,  1);
+
+    reg(O_PRESET,     0,   7, 1, T_PRESET, 0);
+    reg(O_APPLY,      0,   0, 0, T_ACT,    0);
+    reg(O_SAVE,       0,   0, 0, T_ACT,    0);
+    reg(O_RESET,      0,   0, 0, T_ACT,    0);
+}
+
+function build_pages() {
+    pg_first[0] = 0;   pg_count[0] = 5;    /* AIM ASSIST */
+    pg_first[1] = 5;   pg_count[1] = 4;    /* AIM SNAP   */
+    pg_first[2] = 9;   pg_count[2] = 5;    /* RECOIL     */
+    pg_first[3] = 14;  pg_count[3] = 4;    /* RAPID FIRE */
+    pg_first[4] = 18;  pg_count[4] = 3;    /* JITTER     */
+    pg_first[5] = 21;  pg_count[5] = 3;    /* SHOT MODS  */
+    pg_first[6] = 24;  pg_count[6] = 3;    /* MOVEMENT   */
+    pg_first[7] = 27;  pg_count[7] = 5;    /* SCOPE/TRIG */
+    pg_first[8] = 32;  pg_count[8] = 5;    /* EXTRAS     */
+    pg_first[9] = 37;  pg_count[9] = 4;    /* SYSTEM     */
+}
+
+function load_defaults() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        oval[ld_i] = odef[ld_i];
+        ld_i = ld_i + 1;
+    }
+}
+
+function clamp_all() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        if(otyp[ld_i] != T_ACT) {
+            if(oval[ld_i] > omax[ld_i]) oval[ld_i] = omax[ld_i];
+            if(oval[ld_i] < omin[ld_i]) oval[ld_i] = omin[ld_i];
+        }
+        ld_i = ld_i + 1;
+    }
+}
+
+
+/* ==================================================================
+   PERSISTENT STORAGE - 12 slot vars, bit-packed
+   ================================================================== */
+function bitof(bv, bb) {
+    return (bv >> bb) & 1;
+}
+
+function save_all() {
+    sv_a = oval[O_AA_HIP]
+         + (oval[O_SNAP_ON]   << 1)
+         + (oval[O_AUTOFOCUS] << 2)
+         + (oval[O_AR_ON]     << 3)
+         + (oval[O_AR_RAMP]   << 4)
+         + (oval[O_RF_ON]     << 5)
+         + (oval[O_RF_ADS]    << 6)
+         + (oval[O_SPRINT]    << 7);
+    set_pvar(SPVAR_1, sv_a);
+
+    sv_b = oval[O_YYCAN]
+         + (oval[O_BHOP]   << 1)
+         + (oval[O_QS_ON]  << 2)
+         + (oval[O_HAIR]   << 3)
+         + (oval[O_RELCAN] << 4)
+         + (oval[O_MELEE]  << 5)
+         + (oval[O_RUMBLE] << 6)
+         + (oval[O_ANIM]   << 7);
+    set_pvar(SPVAR_2, sv_b);
+
+    set_pvar(SPVAR_3, oval[O_AA_MODE]
+                    + (oval[O_AA_ACTIVE] << 3)
+                    + (oval[O_JIT_MODE]  << 5)
+                    + (oval[O_DROP]      << 7)
+                    + (oval[O_CROUCHS]   << 9));
+    set_pvar(SPVAR_4, oval[O_JUMPS] + (oval[O_PRESET] << 2));
+
+    set_pvar(SPVAR_5,  oval[O_AA_POWER]  + (oval[O_AA_SPEED]   << 7));
+    set_pvar(SPVAR_6,  oval[O_SNAP_PULL] + (oval[O_SNAP_DELAY] << 7));
+    set_pvar(SPVAR_7,  oval[O_AR_VERT]   + ((oval[O_AR_HORZ] + 50) << 7));
+    set_pvar(SPVAR_8,  oval[O_AR_DZ]     + (oval[O_AR_DELAY]  << 7));
+    set_pvar(SPVAR_9,  oval[O_RF_HOLD]   + (oval[O_RF_REST]   << 7));
+    set_pvar(SPVAR_10, oval[O_JIT_HOLD]  + (oval[O_JIT_REST]  << 7));
+    set_pvar(SPVAR_11, oval[O_QS_DELAY]  + (oval[O_TSTOP]     << 7));
+    set_pvar(SPVAR_12, oval[O_MEL_RATE]  + (77 << 7));    /* 77 = magic */
+}
+
+function load_all() {
+    lo_c = get_pvar(SPVAR_12, 0, 32000, 0);
+    if((lo_c >> 7) != 77) {
+        save_all();                  /* nothing valid stored - keep defaults */
+    } else {
+        oval[O_MEL_RATE] = lo_c & 127;
+
+        lo_c = get_pvar(SPVAR_1, 0, 255, 0);
+        oval[O_AA_HIP]    = bitof(lo_c, 0);
+        oval[O_SNAP_ON]   = bitof(lo_c, 1);
+        oval[O_AUTOFOCUS] = bitof(lo_c, 2);
+        oval[O_AR_ON]     = bitof(lo_c, 3);
+        oval[O_AR_RAMP]   = bitof(lo_c, 4);
+        oval[O_RF_ON]     = bitof(lo_c, 5);
+        oval[O_RF_ADS]    = bitof(lo_c, 6);
+        oval[O_SPRINT]    = bitof(lo_c, 7);
+
+        lo_c = get_pvar(SPVAR_2, 0, 255, 0);
+        oval[O_YYCAN]  = bitof(lo_c, 0);
+        oval[O_BHOP]   = bitof(lo_c, 1);
+        oval[O_QS_ON]  = bitof(lo_c, 2);
+        oval[O_HAIR]   = bitof(lo_c, 3);
+        oval[O_RELCAN] = bitof(lo_c, 4);
+        oval[O_MELEE]  = bitof(lo_c, 5);
+        oval[O_RUMBLE] = bitof(lo_c, 6);
+        oval[O_ANIM]   = bitof(lo_c, 7);
+
+        lo_c = get_pvar(SPVAR_3, 0, 32000, 0);
+        oval[O_AA_MODE]   =  lo_c        & 7;
+        oval[O_AA_ACTIVE] = (lo_c >> 3)  & 3;
+        oval[O_JIT_MODE]  = (lo_c >> 5)  & 3;
+        oval[O_DROP]      = (lo_c >> 7)  & 3;
+        oval[O_CROUCHS]   = (lo_c >> 9)  & 3;
+
+        lo_c = get_pvar(SPVAR_4, 0, 32000, 0);
+        oval[O_JUMPS]  =  lo_c       & 3;
+        oval[O_PRESET] = (lo_c >> 2) & 7;
+
+        lo_c = get_pvar(SPVAR_5, 0, 32000, 0);
+        oval[O_AA_POWER]  = lo_c & 127;  oval[O_AA_SPEED]   = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_6, 0, 32000, 0);
+        oval[O_SNAP_PULL] = lo_c & 127;  oval[O_SNAP_DELAY] = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_7, 0, 32000, 0);
+        oval[O_AR_VERT]   = lo_c & 127;  oval[O_AR_HORZ]    = ((lo_c >> 7) & 127) - 50;
+        lo_c = get_pvar(SPVAR_8, 0, 32000, 0);
+        oval[O_AR_DZ]     = lo_c & 127;  oval[O_AR_DELAY]   = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_9, 0, 32000, 0);
+        oval[O_RF_HOLD]   = lo_c & 127;  oval[O_RF_REST]    = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_10, 0, 32000, 0);
+        oval[O_JIT_HOLD]  = lo_c & 127;  oval[O_JIT_REST]   = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_11, 0, 32000, 0);
+        oval[O_QS_DELAY]  = lo_c & 127;  oval[O_TSTOP]      = (lo_c >> 7) & 127;
+
+        clamp_all();
+    }
+}
+
+
+/* ==================================================================
+   NUMBER RENDERING
+   No %d exists. Digits go into the OLED string buffer via putc_oled
+   (1-based) and are drawn in one puts_oled call.
+   ================================================================== */
+function print_num(nx, ny, nfont, ncol, nval) {
+    np_v   = nval;
+    np_neg = 0;
+    if(np_v < 0) { np_neg = 1; np_v = 0 - np_v; }
+
+    np_n = 0;
+    if(np_v == 0) {
+        np_dig[0] = 0;
+        np_n = 1;
+    }
+    while(np_v > 0) {
+        np_dig[np_n] = np_v % 10;
+        np_v = np_v / 10;
+        np_n = np_n + 1;
+    }
+
+    np_i = 1;
+    if(np_neg) {
+        putc_oled(1, CH_MINUS);
+        np_i = 2;
+    }
+    np_j = np_n;
+    while(np_j > 0) {
+        np_j = np_j - 1;
+        putc_oled(np_i, CH_ZERO + np_dig[np_j]);
+        np_i = np_i + 1;
+    }
+    puts_oled(nx, ny, nfont, np_i - 1, ncol);
+}
+
+
+/* ==================================================================
+   DSR-50  -  drawn as a vector sprite in the band y 14..45
+   Left to right: muzzle brake, barrel, handguard, bipod, receiver,
+   scope, magazine, trigger guard, grip, stock, buttplate.
+   ================================================================== */
+function draw_dsr() {
+    /* --- barrel group --- */
+    rect_oled(5,  24,  7,  7, 1, OLED_WHITE);   /* muzzle brake      */
+    rect_oled(8,  26, 40,  3, 1, OLED_WHITE);   /* barrel            */
+    rect_oled(24, 24, 20,  7, 0, OLED_WHITE);   /* handguard         */
+    line_oled(30, 30, 24, 43, 1, OLED_WHITE);   /* bipod leg L       */
+    line_oled(30, 30, 36, 43, 1, OLED_WHITE);   /* bipod leg R       */
+    line_oled(22, 43, 26, 43, 1, OLED_WHITE);   /* foot L            */
+    line_oled(34, 43, 38, 43, 1, OLED_WHITE);   /* foot R            */
+
+    /* --- optic --- */
+    rect_oled(50, 14,  6,  9, 1, OLED_WHITE);   /* objective bell    */
+    rect_oled(56, 16, 28,  5, 1, OLED_WHITE);   /* scope tube        */
+    rect_oled(84, 15,  5,  7, 1, OLED_WHITE);   /* eyepiece          */
+    rect_oled(60, 21,  4,  4, 1, OLED_WHITE);   /* front ring        */
+    rect_oled(78, 21,  4,  4, 1, OLED_WHITE);   /* rear ring         */
+
+    /* --- body --- */
+    rect_oled(48, 24, 44,  8, 0, OLED_WHITE);   /* receiver          */
+    line_oled(88, 27, 96, 27, 1, OLED_WHITE);   /* bolt handle       */
+    rect_oled(58, 32,  9,  9, 0, OLED_WHITE);   /* magazine          */
+    rect_oled(70, 32, 10,  5, 0, OLED_WHITE);   /* trigger guard     */
+    rect_oled(82, 32,  7, 12, 1, OLED_WHITE);   /* pistol grip       */
+
+    /* --- stock --- */
+    rect_oled(92, 19, 18,  3, 1, OLED_WHITE);   /* cheek riser       */
+    rect_oled(92, 22, 26, 10, 0, OLED_WHITE);   /* stock frame       */
+    rect_oled(118, 20, 4, 14, 1, OLED_WHITE);   /* buttplate         */
+}
+
+
+/* ==================================================================
+   OLED - BOOT
+   0..1500ms   : the rifle scans in left to right behind a dithered
+                 edge and a bright scan line
+   1500..3000  : header + "v2.0  ARMING" + progress bar
+   ================================================================== */
+function draw_boot() {
+    cls_oled(OLED_BLACK);
+    draw_dsr();
+
+    if(boot_t < 1500) {
+        bt_x = (boot_t * 148) / 1500;
+
+        /* everything right of the scan line is not drawn yet */
+        if(bt_x < 128) rect_oled(bt_x, 12, 128 - bt_x, 34, 1, OLED_BLACK);
+
+        /* dithered 4px blocks trailing the edge = "pixelating in" */
+        if(bt_x > 16 && bt_x < 132) {
+            bt_i = 0;
+            while(bt_i < 8) {
+                bt_j = 0;
+                while(bt_j < 4) {
+                    if((((bt_i * 5) + (bt_j * 3) + (bt_x / 4)) % 3) != 0) {
+                        rect_oled(bt_x - 16 + (bt_j * 4), 14 + (bt_i * 4),
+                                  4, 4, 1, OLED_BLACK);
+                    }
+                    bt_j = bt_j + 1;
+                }
+                bt_i = bt_i + 1;
+            }
+        }
+
+        if(bt_x < 128) line_oled(bt_x, 13, bt_x, 46, 1, OLED_WHITE);
+
+    } else {
+        rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+        print(11, 2, OLED_FONT_SMALL, OLED_BLACK, T_TITLE[0]);
+
+        print(19, 48, OLED_FONT_SMALL, OLED_WHITE, T_VER[0]);
+
+        bt_w = ((boot_t - 1500) * 124) / 1400;
+        if(bt_w > 124) bt_w = 124;
+        rect_oled(0, 57, 128, 7, 0, OLED_WHITE);
+        rect_oled(2, 59, bt_w, 3, 1, OLED_WHITE);
+    }
+}
+
+
+/* ==================================================================
+   OLED - IDLE HUD
+     header   y 0..11
+     reticle  centred (25,32), divider at x 50
+     status   3 rows at y 16 / 28 / 40  (12px pitch)
+     chips    y 53
+   ================================================================== */
+function draw_idle() {
+    cls_oled(OLED_BLACK);
+    id_cx = 25;
+    id_cy = 32;
+
+    rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+    print(11, 2, OLED_FONT_SMALL, OLED_BLACK, T_TITLE[0]);
+    if(oval[O_ANIM]) {
+        id_s = (anim % 26) * 6;
+        rect_oled(id_s, 0, 5, 12, 1, OLED_BLACK);
+    }
+
+    if(master_off) {
+        rect_oled(4, 22, 120, 20, 0, OLED_WHITE);
+        print(20, 27, OLED_FONT_MEDIUM, OLED_WHITE, T_OFF[0]);
+        print(10, 50, OLED_FONT_SMALL, OLED_WHITE, T_REARM[0]);
+    } else {
+        if(oval[O_ANIM]) {
+            id_r = anim % 20;
+            if(id_r > 9) id_r = 19 - id_r;
+            id_r = 5 + id_r;
+        } else {
+            id_r = 10;
+        }
+        circle_oled(id_cx, id_cy, id_r, 0, OLED_WHITE);
+        circle_oled(id_cx, id_cy, 2, 1, OLED_WHITE);
+        line_oled(id_cx - 16, id_cy, id_cx - id_r - 2, id_cy, 1, OLED_WHITE);
+        line_oled(id_cx + id_r + 2, id_cy, id_cx + 16, id_cy, 1, OLED_WHITE);
+        line_oled(id_cx, id_cy - 16, id_cx, id_cy - id_r - 2, 1, OLED_WHITE);
+        line_oled(id_cx, id_cy + id_r + 2, id_cx, id_cy + 16, 1, OLED_WHITE);
+        line_oled(id_cx - 16, id_cy - 16, id_cx - 10, id_cy - 16, 1, OLED_WHITE);
+        line_oled(id_cx - 16, id_cy - 16, id_cx - 16, id_cy - 10, 1, OLED_WHITE);
+        line_oled(id_cx + 16, id_cy + 16, id_cx + 10, id_cy + 16, 1, OLED_WHITE);
+        line_oled(id_cx + 16, id_cy + 16, id_cx + 16, id_cy + 10, 1, OLED_WHITE);
+
+        line_oled(50, 15, 50, 49, 1, OLED_WHITE);
+
+        print(56, 16, OLED_FONT_SMALL, OLED_WHITE, T_AA[0]);
+        print(76, 16, OLED_FONT_SMALL, OLED_WHITE, V_AAMODE[oval[O_AA_MODE]]);
+
+        print(56, 28, OLED_FONT_SMALL, OLED_WHITE, T_AR[0]);
+        if(oval[O_AR_ON]) print_num(76, 28, OLED_FONT_SMALL, OLED_WHITE, oval[O_AR_VERT]);
+        else print(76, 28, OLED_FONT_SMALL, OLED_WHITE, V_ONOFF[0]);
+
+        print(56, 40, OLED_FONT_SMALL, OLED_WHITE, T_RF[0]);
+        if(oval[O_JIT_MODE] > 0) print(76, 40, OLED_FONT_SMALL, OLED_WHITE, T_JITR[0]);
+        else print(76, 40, OLED_FONT_SMALL, OLED_WHITE, V_ONOFF[oval[O_RF_ON]]);
+
+        chip_x = 1;
+        if(oval[O_AR_ON])    chip(0);
+        if(oval[O_RF_ON])    chip(1);
+        if(oval[O_JIT_MODE]) chip(2);
+        if(oval[O_AA_MODE])  chip(3);
+        if(oval[O_DROP])     chip(4);
+        if(oval[O_QS_ON])    chip(5);
+        if(oval[O_MELEE])    chip(6);
+    }
+}
+
+function chip(ci) {
+    rect_oled(chip_x, 53, 16, 10, 1, OLED_WHITE);
+    print(chip_x + 1, 55, OLED_FONT_SMALL, OLED_BLACK, CHIP[ci]);
+    chip_x = chip_x + 18;
+}
+
+
+/* ==================================================================
+   OLED - NOTIFICATIONS
+   ================================================================== */
+function draw_notif() {
+    cls_oled(OLED_BLACK);
+    rect_oled(0, 0, 128, 64, 0, OLED_WHITE);
+    rect_oled(3, 3, 122, 58, 0, OLED_WHITE);
+    if(notif_id == 0) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[0]);
+    if(notif_id == 1) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[1]);
+    if(notif_id == 2) print(31, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[2]);
+    if(notif_id == 3) print(31, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[3]);
+    if(notif_id == 4) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[4]);
+}
+
+
+/* ==================================================================
+   OLED - MENU
+     header y 0..11, rows at y 15/25/35/45/55, labels x 3, values x 76
+   ================================================================== */
+function draw_menu() {
+    cls_oled(OLED_BLACK);
+    dm_base = pg_first[m_page];
+    dm_n    = pg_count[m_page];
+
+    rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+    print(3, 2, OLED_FONT_SMALL, OLED_BLACK, PGN[m_page]);
+
+    /* page counter "n/10" */
+    if(m_page >= 9) {
+        putc_oled(1, CH_ZERO + 1);
+        putc_oled(2, CH_ZERO + ((m_page + 1) % 10));
+        dm_c = 3;
+    } else {
+        putc_oled(1, CH_ZERO + m_page + 1);
+        dm_c = 2;
+    }
+    putc_oled(dm_c,     CH_SLASH);
+    putc_oled(dm_c + 1, CH_ZERO + 1);
+    putc_oled(dm_c + 2, CH_ZERO);
+    puts_oled(88, 2, OLED_FONT_SMALL, dm_c + 2, OLED_BLACK);
+
+    dm_i = 0;
+    while(dm_i < dm_n) {
+        dm_y  = 15 + (dm_i * 10);
+        dm_id = dm_base + dm_i;
+        if(dm_i == m_item) {
+            rect_oled(0, dm_y - 1, 120, 10, 1, OLED_WHITE);
+            print(3, dm_y, OLED_FONT_SMALL, OLED_BLACK, LBL[dm_id]);
+            draw_value(dm_id, 76, dm_y, OLED_BLACK);
+        } else {
+            print(3, dm_y, OLED_FONT_SMALL, OLED_WHITE, LBL[dm_id]);
+            draw_value(dm_id, 76, dm_y, OLED_WHITE);
+        }
+        dm_i = dm_i + 1;
+    }
+
+    rect_oled(121, 14, 5, 50, 0, OLED_WHITE);
+    rect_oled(121, 14 + ((m_item * 46) / dm_n), 5, (46 / dm_n) + 4, 1, OLED_WHITE);
+}
+
+function draw_value(id, vx, vy, vc) {
+    dv_t = otyp[id];
+    if(dv_t == T_NUM)    print_num(vx, vy, OLED_FONT_SMALL, vc, oval[id]);
+    if(dv_t == T_ONOFF)  print(vx, vy, OLED_FONT_SMALL, vc, V_ONOFF[oval[id]]);
+    if(dv_t == T_AAMODE) print(vx, vy, OLED_FONT_SMALL, vc, V_AAMODE[oval[id]]);
+    if(dv_t == T_ACTIVE) print(vx, vy, OLED_FONT_SMALL, vc, V_ACTIVE[oval[id]]);
+    if(dv_t == T_JIT)    print(vx, vy, OLED_FONT_SMALL, vc, V_JIT[oval[id]]);
+    if(dv_t == T_TRIG)   print(vx, vy, OLED_FONT_SMALL, vc, V_TRIG[oval[id]]);
+    if(dv_t == T_PRESET) print(vx, vy, OLED_FONT_SMALL, vc, V_PRESET[oval[id]]);
+    if(dv_t == T_ACT)    print(vx, vy, OLED_FONT_SMALL, vc, T_GO[0]);
+}

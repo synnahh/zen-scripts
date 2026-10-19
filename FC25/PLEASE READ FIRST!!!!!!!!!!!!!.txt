@@ -1,0 +1,68 @@
+IF UR ON PS5 MAKE SURE U DO BYPASS ( https://www.youtube.com/watch?v=ZAPS8sR23TA&t=134s&pp=ygUVcHM1IGNyb251cyB6ZW4gYnlwYXNz ) PLEASE KEEP IN MIND THIS ONLY WORKS FOR THE ORIGINAL PS5 CONTROLLER WONT WORK FOR PS5 DUAL SENSE EDGE 
+MAKE SURE U PICK YOUR CORRECT BIND SCRIPT ( THERE IS 2 SCRIPTS THAT COME WHEN U BUY ALTERNATE AND CLASSIC LAYOUTS ) ( ALTERNATE IS FOR PEOPLE WHO WITH SQUARE/X ) 
+                                                                                                                    ( CLASSIC IS FOR PEOPLE WHO SHOOT WITH CIRCLE/B )
+IF YOU GUYS GOT CUSTOM BINDS LIKE FIENSSE ON R2/RT AND SPRINT ON R1/RB PLEASE CONTACT ME ON DISCORD : https://discord.gg/SCnG8Eng
+
+IF YOU GUYS WONT USE SKILLS ON THE SCRIPT PLS CONTACT ME ON DISCORD AND I WILL GIVE U THE SHOTS ONLY SCRIPT WHICH HAS WAY LESS DELAY ( THE SKILLS DO ADD MORE DELAY )
+
+
+
+HOW MENU WORKS
+
+# READ FULLY AND CAREFULLY SO YOU UNDERSTAND EVERYTHING
+
+
+# How to Open the Menu:
+
+    **Press Left Trigger + Options on your controller. **
+
+# Navigating the Menu:
+
+     **Use Left or Right D-pad to switch between options. **
+     **Use Up or Down D-pad to switch between sections (e.g., cycling through 4 different shot types by pressing Down D-pad). **
+
+# Entering the Values Section:
+
+     **Once you're on an option (like "Timedfines finish" make sure you pick  "LukaGz Full") this goes for all the other shots also, press X or A to enter the values section. **
+
+# Adjusting Values:
+
+     **Use Left or Right D-pad to switch between value sections.**
+     **Hold Left Trigger and press ( Left or Right D-pad to switch the numbers by 1s) ( Up or Down D-pad to switch the  numbers in 10s )**
+
+
+
+
+
+1. RS SKILLS: I RECOMMEND YOU KEEP IT ON ( ALWAYS ON ) 
+   BIND A SKILL TO RIGHT STICK UP
+   BIND A SKILL TO RIGHT STICK RIGHT
+   BIND A SKILL TO RIGHT STICK DOWN
+   BIND A SKILL TO RIGHT STICK LEFT
+
+2. BTN SKILLS 1 : FIND THE SKILL YOU WANT TO USE ( THEN PRESS X OR A ) AND CHOSE THE BUTTON U WISH TO PRESS TO PERFORM THE SKILL THEN PRESS ( > ) ON UR CONTROLLER ( ONETAP/DOUBLETAP ) PICK THE ONE U WANT ( EXIT DIRECTION ) WHICHEVER ONE U WANT
+   
+3. BTN SKILLS 2 : SAME THING AS THE ( BTN SKILLS 1 ) 
+
+4. COMING SOON.. :  THIS WILL BE COMING SOON DONT TOUCH OR IT WILL BLOW UP UR ZEN
+
+5. UNIVERSAL EA PING :  FIND YOUR AVERAGE PING AND PUT THAT INTO THE VALUE OF THIS MOD 
+
+6. TIMED FINISH : I TOTALLY RECOMMEND THIS STAYS OFF 
+
+7. TIMEDFINES FINISH : PUT IT ON LUKAGZ FULL OR LUKA GZ BTN ( LUKAGZ FULL MAKES IT SO U PRESS NORMAL BUTTONS AND IT WILL DO A FINESSE SHOT ) ( LUKAGZ BTN MAKES IT SO U BIND FINESSE TO 1 SINGLE BUTTON FOR EXAMPLE DOWN DPAD ONCE U PRESS THAT IT WILL DO THE SHOT ) 
+   MAKE SURE U DO YOUR VALUES CORRECTLY!!!!!!!!!!
+if ur getting red timed shots turn up the accuracy by 5s 
+if ur getting yellow timed shots turn up the accuracy by 3s
+if ur getting white timed shots turn down the accuracy by 5s
+
+8. LUKAGZ NEW MOVES : OFF : YOUR CHOICE TO BE HONEST ( SUPPORTS JOCKEY AND 2ND MAN PRESS ) MIGHT CAUSE ISSUES THO 
+
+9. COMING SOON : THIS WILL BE COMING SOON DONT TOUCH OR IT WILL BLOW UP UR ZEN
+
+10. TIMED TRIVELA : I RECOMMEND U KEEP IT ON LUKAGZ FULL : YOU CAN KEEP IT ON LUKAGZ BTN BUT YOU WILL NEED TO BIND IT 
+    MAKE SURE U YOU YOUR VALUES CORRECTLY!!!!!!!!   
+if ur getting red timed shots turn up the accuracy by 5s 
+if ur getting yellow timed shots turn up the accuracy by 3s
+if ur getting white timed shots turn down the accuracy by 5s
+

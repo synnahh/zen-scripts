@@ -1,0 +1,1600 @@
+/* ==================================================================
+   S C O P ' D
+   ------------------------------------------------------------------
+   Black Ops II  //  Cronus Zen / GPC                     v1.0
+   SNIPER BUILD  -  OFFLINE / BOT LOBBY / CAMPAIGN
+   ------------------------------------------------------------------
+   MENU        : hold L2 + tap OPTIONS
+   MASTER KILL : hold L2 + tap SHARE
+
+   IN MENU:
+     D-UP / D-DOWN ....... move cursor
+     D-LEFT / D-RIGHT .... change value (hold to fast-scroll)
+     L1 / R1 ............. previous / next page
+     CROSS ............... toggle / run action
+     TRIANGLE ............ reset this line to default
+     CIRCLE .............. save + exit
+
+   TRICKSHOTS:
+     Any D-pad direction with a macro bound to it fires that macro and
+     is blocked from the game. Directions left on OFF pass straight
+     through, so you keep your scorestreaks on those. Set a MODIFIER
+     on the TRICKSHOT page if you'd rather keep all four directions.
+
+     Calibrate SPIN 360ms first - it is the time your stick needs for
+     one full rotation at YOUR sensitivity. Everything else derives
+     from it. See the README for the calibration method.
+   ------------------------------------------------------------------
+   GPC NOTES: no local variables exist - every working variable is
+   declared at top level and prefixed by its owning function. Strings
+   live in the data section; print() takes an address, not a literal,
+   and there is no %d, so numbers go through print_num().
+
+   SCREEN BUDGET (128 x 64, small font 7px wide / 8px tall):
+     header   y 0..11
+     rows     y 15, 25, 35, 45, 55   (10px pitch, 2px clear between)
+     labels   x 3   (max 10 chars -> ends at 73)
+     values   x 76  (max  6 chars -> ends at 118)
+     scrollbr x 121..125
+   ================================================================== */
+
+
+/* ---------------- BUTTON LAYOUT (edit me) ---------------- */
+define BTN_FIRE    = PS4_R2;
+define BTN_ADS     = PS4_L2;
+define BTN_MELEE   = PS4_R3;
+define BTN_BREATH  = PS4_L3;    /* sprint, and hold-breath while scoped */
+define BTN_JUMP    = PS4_CROSS;
+define BTN_CROUCH  = PS4_CIRCLE;
+define BTN_RELOAD  = PS4_SQUARE;
+define BTN_SWAP    = PS4_TRIANGLE;
+define BTN_MENU    = PS4_OPTIONS;
+define BTN_MASTER  = PS4_SHARE;
+define BTN_MOD1    = PS4_L1;
+define BTN_MOD2    = PS4_R1;
+
+define STK_RX = PS4_RX;
+define STK_RY = PS4_RY;
+define STK_LX = PS4_LX;
+define STK_LY = PS4_LY;
+
+/* ---------------- MENU NAVIGATION ---------------- */
+define NAV_UP    = PS4_UP;
+define NAV_DOWN  = PS4_DOWN;
+define NAV_LEFT  = PS4_LEFT;
+define NAV_RIGHT = PS4_RIGHT;
+define NAV_PGL   = PS4_L1;
+define NAV_PGR   = PS4_R1;
+define NAV_OK    = PS4_CROSS;
+define NAV_DEF   = PS4_TRIANGLE;
+define NAV_EXIT  = PS4_CIRCLE;
+
+/* ---------------- OPTION IDs ----------------
+   The ID is also the index into LBL[]. Pages take contiguous runs
+   of IDs, so the order below IS the menu order. ---------------- */
+define O_AA_MODE    = 0;      /* p1  AIM ASSIST */
+define O_AA_POWER   = 1;
+define O_AA_SPEED   = 2;
+define O_AA_WHEN    = 3;
+define O_AA_HIP     = 4;
+
+define O_SNAP_ON    = 5;      /* p2  SCOPE IN */
+define O_SNAP_PULL  = 6;
+define O_SNAP_DLY   = 7;
+define O_SNAP_DIR   = 8;
+define O_SCOPE_BAIT = 9;
+
+define O_BREATH     = 10;     /* p3  BREATH */
+define O_BR_DLY     = 11;
+define O_BR_HOLD    = 12;
+define O_BR_REST    = 13;
+
+define O_QS_ON      = 14;     /* p4  QUICKSCOPE */
+define O_QS_DLY     = 15;
+define O_QS_HOLD    = 16;
+define O_RESCOPE    = 17;
+define O_RESC_DLY   = 18;
+
+define O_BOLT_ON    = 19;     /* p5  BOLT WORK */
+define O_BOLT_DLY   = 20;
+define O_RELCAN     = 21;
+
+define O_RF_ON      = 22;     /* p6  SEMI AUTO */
+define O_RF_HOLD    = 23;
+define O_RF_REST    = 24;
+define O_AR_ON      = 25;
+define O_AR_VERT    = 26;
+
+define O_DROP       = 27;     /* p7  MOVEMENT */
+define O_JUMPS      = 28;
+define O_SPRINT     = 29;
+define O_YYCAN      = 30;
+define O_DIVE       = 31;
+
+define O_HAIR       = 32;     /* p8  TRIGGERS */
+define O_TRIGPT     = 33;
+define O_MELEE      = 34;
+
+define O_TS_ON      = 35;     /* p9  TRICKSHOT */
+define O_TS_MOD     = 36;
+define O_TS_SPIN    = 37;
+define O_TS_DIR     = 38;
+define O_TS_SCOPE   = 39;
+
+define O_BIND_U     = 40;     /* p10 TS BINDS */
+define O_BIND_D     = 41;
+define O_BIND_L     = 42;
+define O_BIND_R     = 43;
+
+define O_IDLE_VIEW  = 44;     /* p11 DISPLAY */
+define O_ANIM       = 45;
+define O_RUMBLE     = 46;
+
+define O_PRESET     = 47;     /* p12 SYSTEM */
+define O_APPLY      = 48;
+define O_SAVE       = 49;
+define O_RESET      = 50;
+
+define OPT_N  = 51;
+define PAGE_N = 12;
+
+/* ---------------- VALUE TYPES ---------------- */
+define T_NUM    = 0;
+define T_ONOFF  = 1;
+define T_AAMODE = 2;
+define T_WHEN   = 3;
+define T_DIR4   = 4;
+define T_BREATH = 5;
+define T_TRIG   = 6;
+define T_TSMOD  = 7;
+define T_SPIN   = 8;
+define T_TSSCP  = 9;
+define T_IDLE   = 10;
+define T_MACRO  = 11;
+define T_PRESET = 12;
+define T_ACT    = 13;
+
+/* ---------------- ASCII ---------------- */
+define CH_ZERO  = 48;
+define CH_MINUS = 45;
+define CH_SLASH = 47;
+
+
+/* ==================================================================
+   DATA SECTION - all on-screen text.
+   Labels max 10 chars, values max 6, so the columns never touch.
+   ================================================================== */
+const string LBL[] = {
+    "AA MODE",    "AA POWER",   "AA SPEED",   "AA WHEN",    "HIP ASSIST",
+    "SNAP AIM",   "SNAP PULL",  "SNAP DELAY", "SNAP DIR",   "SCOPE BAIT",
+    "MODE",       "DELAY x10",  "MAX HOLD",   "AUTO REST",
+    "ENABLE",     "QS DELAY",   "FIRE HOLD",  "AUTO RESCP", "RESCP DLY",
+    "BOLT CANCL", "BOLT DELAY", "RELOAD CAN",
+    "RAPID FIRE", "RF HOLD ms", "RF REST ms", "ANTI RECOL", "AR VERT",
+    "DROP SHOT",  "JUMP SHOT",  "AUTOSPRINT", "YY CANCEL",  "DIVE HELP",
+    "HAIR TRIG",  "TRIGGER PT", "TURBO MELE",
+    "ENABLE",     "MODIFIER",   "SPIN 360ms", "SPIN DIR",   "SCOPE MODE",
+    "D-PAD UP",   "D-PAD DOWN", "D-PAD LEFT", "D-PAD RGHT",
+    "IDLE VIEW",  "OLED ANIM",  "RUMBLE",
+    "PRESET",     "APPLY",      "SAVE ALL",   "RESET ALL"
+};
+
+const string PGN[] = {
+    "AIM ASSIST", "SCOPE IN",  "BREATH",    "QUICKSCOPE",
+    "BOLT WORK",  "SEMI AUTO", "MOVEMENT",  "TRIGGERS",
+    "TRICKSHOT",  "TS BINDS",  "DISPLAY",   "SYSTEM"
+};
+
+const string V_ONOFF[]  = { "OFF", "ON" };
+const string V_AAMODE[] = { "OFF", "CIRCLE", "PULSE", "STRAFE", "FULL" };
+const string V_WHEN[]   = { "SCOPED", "FIRE", "S+F", "ALWAYS" };
+const string V_DIR4[]   = { "DOWN", "UP", "LEFT", "RIGHT" };
+const string V_BREATH[] = { "OFF", "ALWAYS", "SMART", "DELAY" };
+const string V_TRIG[]   = { "OFF", "FIRE", "ADS", "BOTH" };
+const string V_TSMOD[]  = { "NONE", "L1", "R1", "SHARE" };
+const string V_SPIN[]   = { "RIGHT", "LEFT", "AUTO" };
+const string V_TSSCP[]  = { "QUICK", "HARD", "NONE" };
+const string V_IDLE[]   = { "AUTO", "SCOPE", "BINDS" };
+const string V_MACRO[]  = { "OFF", "360", "180", "JMP360",
+                            "DRP360", "DIVE", "SPINQS", "NOSCOP", "YYSPIN" };
+const string V_PRESET[] = { "CUSTOM", "DSR-50", "BALLST", "SVU-AS",
+                            "XPR-50", "QSRUSH", "TRICK" };
+
+const string MSG[]  = { "RESET", "SAVED", "PRESET", "DISARM", "ARMED" };
+const string CHIP[] = { "AA", "BR", "QS", "RS", "BC", "TS", "RF" };
+const string DIRL[] = { "UP", "DOWN", "LEFT", "RIGHT" };
+
+const string T_TITLE[] = { "SCOP'D" };
+const string T_SUB[]   = { "S C O P ' D" };
+const string T_VER[]   = { "v1.0  ARMING" };
+const string T_OFF[]   = { "MODS OFF" };
+const string T_REARM[] = { "L2+SHARE = ARM" };
+const string T_GO[]    = { ">> GO" };
+const string T_AA[]    = { "AA" };
+const string T_BR[]    = { "BR" };
+const string T_QS[]    = { "QS" };
+const string T_TS[]    = { "TS" };
+
+/* quarter-wave sine, offset +100 so the table stays unsigned */
+const uint8 SINE[] = { 100, 138, 171, 192, 200, 192, 171, 138,
+                       100,  62,  29,   8,   0,   8,  29,  62 };
+
+
+/* ==================================================================
+   OPTION TABLE
+   ================================================================== */
+int oval[51];
+int odef[51];
+int omin[51];
+int omax[51];
+int ostp[51];
+int otyp[51];
+
+int pg_first[12];
+int pg_count[12];
+
+
+/* ==================================================================
+   STATE  (GPC has no locals - everything lives here)
+   ================================================================== */
+int menu_open  = 0;
+int m_page     = 0;
+int m_item     = 0;
+int rep_t      = 0;
+int tick       = 0;
+int master_off = 0;
+
+int boot_t   = 0;
+int oled_t   = 0;
+int anim     = 0;
+int chip_x   = 0;
+int notif_t  = 0;
+int notif_id = 0;
+
+int ads_now  = 0;
+int fire_now = 0;
+int ads_t    = 0;
+int br_t     = 0;
+int br_want  = 0;
+
+int ar_timer = 0;
+
+int aa_on  = 0;
+int aa_x   = 0;
+int aa_y   = 0;
+int aa_lx  = 0;
+int aa_pw  = 0;
+int aa_d   = 0;
+int aa_sp  = 8;
+int aa_sp2 = 4;
+int aa_spl = 16;
+
+int snap_x  = 0;
+int snap_y  = 0;
+int snap_vx = 0;
+int snap_vy = 0;
+int snap_dl = 60;
+
+int rf_h   = 30;
+int rf_r   = 30;
+int qs_d   = 220;
+int qs_h   = 80;
+int resc_d = 300;
+int bolt_d = 300;
+
+/* trickshot */
+int ts_sel  = 0;
+int ts_pow  = 100;
+int ts_a    = 240;
+int ts_b    = 160;
+int ts_qd   = 200;
+int ts_ok   = 0;
+
+/* -- per-function working vars, prefixed by owner -- */
+int ar_rx, ar_ry;
+int mn_id;
+int aj_v;
+int ld_i;
+int sv_a, sv_b;
+int lo_c;
+int bt_r, bt_g, bt_x, bt_w;
+int id_r, id_s, id_i, id_sx, id_sy, id_amp, id_v;
+int dm_i, dm_y, dm_id, dm_base, dm_n, dm_c;
+int dv_t;
+int pp_sel;
+int rt_g;
+int np_v, np_n, np_i, np_j, np_neg;
+int np_dig[6];
+
+
+/* ==================================================================
+   INIT
+   ================================================================== */
+init {
+    vm_tctrl(-8);
+    build_table();
+    build_pages();
+    load_defaults();
+    load_all();
+    boot_t = 0;
+    anim   = 0;
+}
+
+
+/* ==================================================================
+   MAIN
+   ================================================================== */
+main {
+    tick = get_rtime();
+
+    aa_pw  = oval[O_AA_POWER];
+    aa_d   = (aa_pw * 7) / 10;
+    aa_sp  = oval[O_AA_SPEED];
+    aa_sp2 = aa_sp / 2;
+    if(aa_sp2 < 2) aa_sp2 = 2;
+    aa_spl  = aa_sp * 2;
+    rf_h    = oval[O_RF_HOLD];
+    rf_r    = oval[O_RF_REST];
+    qs_d    = oval[O_QS_DLY]   * 10;
+    qs_h    = oval[O_QS_HOLD]  * 10;
+    resc_d  = oval[O_RESC_DLY] * 10;
+    bolt_d  = oval[O_BOLT_DLY] * 10;
+    snap_dl = oval[O_SNAP_DLY] * 10;
+
+    if(get_val(BTN_ADS) > 40) {
+        set_val(BTN_MENU, 0);
+        set_val(BTN_MASTER, 0);
+        if(event_press(BTN_MENU)) {
+            if(menu_open) {
+                save_all();
+                menu_open = 0;
+                flash(1);
+            } else {
+                menu_open = 1;
+                m_item = 0;
+                stop_all();
+            }
+            buzz();
+        }
+        if(event_press(BTN_MASTER)) {
+            master_off = !master_off;
+            stop_all();
+            if(master_off) flash(3);
+            else flash(4);
+            buzz();
+        }
+    }
+
+    if(menu_open) {
+        menu_logic();
+        block_all();
+    } else {
+        if(!master_off) run_mods();
+    }
+
+    oled_t = oled_t + tick;
+    if(oled_t >= 50) {
+        oled_t = 0;
+        anim = anim + 1;
+        if(anim > 2000) anim = 0;
+        if(boot_t < 3600) {
+            boot_t = boot_t + 50;
+            draw_boot();
+        } else if(menu_open) {
+            draw_menu();
+        } else if(notif_t > 0) {
+            draw_notif();
+        } else {
+            draw_idle();
+        }
+    }
+    if(notif_t > 0) notif_t = notif_t - tick;
+}
+
+
+/* ==================================================================
+   MOD ENGINE
+   ================================================================== */
+function run_mods() {
+
+    /* ---------- trigger conditioning ---------- */
+    if(oval[O_HAIR]) {
+        if(get_val(BTN_FIRE) >= oval[O_TRIGPT]) set_val(BTN_FIRE, 100);
+        else set_val(BTN_FIRE, 0);
+        if(get_val(BTN_ADS) >= oval[O_TRIGPT]) set_val(BTN_ADS, 100);
+    }
+
+    ads_now  = 0;
+    fire_now = 0;
+    if(get_val(BTN_ADS)  > 40) ads_now  = 1;
+    if(get_val(BTN_FIRE) > 40) fire_now = 1;
+
+    if(ads_now) ads_t = ads_t + tick;
+    else ads_t = 0;
+
+    /* ---------- TRICKSHOT BINDS ---------- */
+    trickshot();
+
+    /* ---------- AUTO HOLD BREATH ----------
+       ALWAYS holds the moment you scope. SMART only holds once your
+       finger is on the trigger, which stops the meter draining while
+       you are just panning. DELAY waits out the scope-in first.      */
+    br_want = 0;
+    if(oval[O_BREATH] > 0 && ads_now) {
+        if(oval[O_BREATH] == 1) br_want = 1;
+        if(oval[O_BREATH] == 2 && get_val(BTN_FIRE) > 5) br_want = 1;
+        if(oval[O_BREATH] == 3 && ads_t >= (oval[O_BR_DLY] * 10)) br_want = 1;
+    }
+    if(br_want) {
+        if(oval[O_BR_REST]) {
+            /* cycle: hold for MAX HOLD, then let go 600ms to recover */
+            br_t = br_t + tick;
+            if(br_t <= (oval[O_BR_HOLD] * 100)) set_val(BTN_BREATH, 100);
+            else if(br_t > ((oval[O_BR_HOLD] * 100) + 600)) br_t = 0;
+        } else {
+            set_val(BTN_BREATH, 100);
+        }
+    } else {
+        br_t = 0;
+    }
+
+    /* ---------- ANTI-RECOIL (semi-auto snipers) ---------- */
+    if(oval[O_AR_ON] && fire_now) {
+        ar_ry = get_val(STK_RY);
+        if(oval[O_AR_VERT] != 0) {
+            if(ar_ry <  oval[O_AR_VERT] && ar_ry > (0 - oval[O_AR_VERT]))
+                ar_ry = oval[O_AR_VERT];
+        }
+        set_val(STK_RY, clampv(ar_ry));
+    }
+
+    /* ---------- AIM ASSIST ENHANCER ---------- */
+    aa_on = 0;
+    if(oval[O_AA_MODE] > 0) {
+        if(oval[O_AA_WHEN] == 0 && ads_now) aa_on = 1;
+        if(oval[O_AA_WHEN] == 1 && fire_now) aa_on = 1;
+        if(oval[O_AA_WHEN] == 2 && ads_now && fire_now) aa_on = 1;
+        if(oval[O_AA_WHEN] == 3) aa_on = 1;
+        if(oval[O_AA_HIP] && fire_now && !ads_now) aa_on = 1;
+    }
+    /* scope bait: force the sway on during the scope-in window, which
+       is when BO2's aim assist is at its stickiest */
+    if(oval[O_SCOPE_BAIT] && ads_now && ads_t < 400) aa_on = 1;
+
+    if(aa_on) {
+        if(oval[O_AA_MODE] == 1) combo_run(AA_Circle);
+        if(oval[O_AA_MODE] == 2) combo_run(AA_Pulse);
+        if(oval[O_AA_MODE] == 3) combo_run(AA_Strafe);
+        if(oval[O_AA_MODE] == 4) {
+            combo_run(AA_Circle);
+            combo_run(AA_Strafe);
+        }
+        if(oval[O_AA_MODE] == 0 && oval[O_SCOPE_BAIT]) combo_run(AA_Strafe);
+    } else {
+        combo_stop(AA_Circle);
+        combo_stop(AA_Pulse);
+        combo_stop(AA_Strafe);
+        aa_x = 0; aa_y = 0; aa_lx = 0;
+    }
+
+    if(aa_x != 0 || aa_y != 0 || snap_x != 0 || snap_y != 0) {
+        set_val(STK_RX, clampv(get_val(STK_RX) + aa_x + snap_x));
+        set_val(STK_RY, clampv(get_val(STK_RY) + aa_y + snap_y));
+    }
+    if(aa_lx != 0) set_val(STK_LX, clampv(get_val(STK_LX) + aa_lx));
+
+    /* ---------- SNAP AIM (double zoom) ----------
+       The nudge vector is resolved here, not inside the combo - GPC
+       combos take set_val and wait, not branching. */
+    snap_vx = 0;
+    snap_vy = 0;
+    if(oval[O_SNAP_DIR] == 0) snap_vy =     oval[O_SNAP_PULL];
+    if(oval[O_SNAP_DIR] == 1) snap_vy = 0 - oval[O_SNAP_PULL];
+    if(oval[O_SNAP_DIR] == 2) snap_vx = 0 - oval[O_SNAP_PULL];
+    if(oval[O_SNAP_DIR] == 3) snap_vx =     oval[O_SNAP_PULL];
+    if(oval[O_SNAP_ON] && event_press(BTN_ADS)) combo_run(AimSnap);
+    if(combo_running(AimSnap)) set_val(BTN_ADS, 100);
+
+    /* ---------- QUICKSCOPE ---------- */
+    if(oval[O_QS_ON] && event_press(BTN_ADS)) combo_run(QuickScope);
+
+    /* ---------- POST-SHOT WORK ---------- */
+    if(ads_now && event_press(BTN_FIRE)) {
+        if(oval[O_RESCOPE]) combo_run(AutoRescope);
+        if(oval[O_BOLT_ON]) combo_run(BoltCancel);
+    }
+
+    /* ---------- SEMI AUTO RAPID FIRE ---------- */
+    if(oval[O_RF_ON] && fire_now) combo_run(RapidFire);
+    else combo_stop(RapidFire);
+
+    /* ---------- MOVEMENT ---------- */
+    if(shot_trig(oval[O_DROP]))  combo_run(DropShot);
+    if(shot_hold(oval[O_JUMPS])) combo_run(JumpShot);
+    if(oval[O_SPRINT] && !ads_now && get_val(STK_LY) < -70) combo_run(AutoSprint);
+    if(oval[O_YYCAN] && get_val(BTN_SWAP)) combo_run(YYCancel);
+    if(oval[O_DIVE] && !ads_now && get_val(BTN_CROUCH) && get_val(STK_LY) < -70)
+        combo_run(DiveAssist);
+
+    /* ---------- EXTRAS ---------- */
+    if(oval[O_RELCAN] && event_press(BTN_RELOAD)) combo_run(ReloadCancel);
+    if(oval[O_MELEE] && get_val(BTN_MELEE)) combo_run(TurboMelee);
+}
+
+
+/* ==================================================================
+   TRICKSHOT BINDING
+   A direction with a macro bound to it is consumed by the script.
+   A direction left on OFF passes through to the game untouched, so
+   you keep your scorestreaks on the directions you don't use.
+   ================================================================== */
+function trickshot() {
+    if(!oval[O_TS_ON]) return 0;
+
+    ts_ok = 1;
+    if(oval[O_TS_MOD] == 1 && !get_val(BTN_MOD1))   ts_ok = 0;
+    if(oval[O_TS_MOD] == 2 && !get_val(BTN_MOD2))   ts_ok = 0;
+    if(oval[O_TS_MOD] == 3 && !get_val(BTN_MASTER)) ts_ok = 0;
+
+    if(ts_ok) {
+        if(oval[O_BIND_U] > 0) {
+            set_val(NAV_UP, 0);
+            if(event_press(NAV_UP))    fire_macro(oval[O_BIND_U], 0);
+        }
+        if(oval[O_BIND_D] > 0) {
+            set_val(NAV_DOWN, 0);
+            if(event_press(NAV_DOWN))  fire_macro(oval[O_BIND_D], 0);
+        }
+        if(oval[O_BIND_L] > 0) {
+            set_val(NAV_LEFT, 0);
+            if(event_press(NAV_LEFT))  fire_macro(oval[O_BIND_L], 1);
+        }
+        if(oval[O_BIND_R] > 0) {
+            set_val(NAV_RIGHT, 0);
+            if(event_press(NAV_RIGHT)) fire_macro(oval[O_BIND_R], 2);
+        }
+    }
+    return 0;
+}
+
+/* dhint: 0 = neutral, 1 = pressed LEFT, 2 = pressed RIGHT.
+   Used only when SPIN DIR is AUTO. */
+function fire_macro(mac, dhint) {
+    /* --- spin direction --- */
+    ts_pow = 100;
+    if(oval[O_TS_DIR] == 1) ts_pow = -100;
+    if(oval[O_TS_DIR] == 2) {
+        if(dhint == 1) ts_pow = -100;
+        else ts_pow = 100;
+    }
+
+    /* --- scope timing --- */
+    ts_qd = qs_d;
+    if(oval[O_TS_SCOPE] == 1) ts_qd = qs_d + 250;   /* hardscope */
+
+    /* --- split the spin: phase A blind, phase B scoping in --- */
+    ts_a = oval[O_TS_SPIN] * 10;                    /* full 360 in ms */
+    if(mac == 2) ts_a = ts_a / 2;                   /* 180 */
+    if(mac == 6) {                                  /* SPINQS: scope early */
+        ts_b = (ts_a * 7) / 10;
+        ts_a = ts_a - ts_b;
+    } else {
+        ts_b = (ts_a * 4) / 10;
+        ts_a = ts_a - ts_b;
+    }
+    if(ts_a < 20) ts_a = 20;
+    if(ts_b < 20) ts_b = 20;
+
+    ts_sel = mac;
+    stop_ts();
+
+    if(mac == 1 || mac == 2 || mac == 6) combo_run(TS_Scope);
+    if(mac == 3) combo_run(TS_Jump);
+    if(mac == 4) combo_run(TS_Drop);
+    if(mac == 5) combo_run(TS_Dive);
+    if(mac == 7) combo_run(TS_NoScope);
+    if(mac == 8) combo_run(TS_YY);
+    buzz();
+    return 0;
+}
+
+function stop_ts() {
+    combo_stop(TS_Scope);  combo_stop(TS_Jump);    combo_stop(TS_Drop);
+    combo_stop(TS_Dive);   combo_stop(TS_NoScope); combo_stop(TS_YY);
+}
+
+function shot_trig(m) {
+    if(m == 1 && event_press(BTN_FIRE)) return 1;
+    if(m == 2 && event_press(BTN_ADS))  return 1;
+    if(m == 3) {
+        if(event_press(BTN_FIRE)) return 1;
+        if(event_press(BTN_ADS))  return 1;
+    }
+    return 0;
+}
+
+function shot_hold(m) {
+    if(m == 1 && get_val(BTN_FIRE) > 40) return 1;
+    if(m == 2 && get_val(BTN_ADS)  > 40) return 1;
+    if(m == 3) {
+        if(get_val(BTN_FIRE) > 40) return 1;
+        if(get_val(BTN_ADS)  > 40) return 1;
+    }
+    return 0;
+}
+
+function clampv(v) {
+    if(v >  100) return  100;
+    if(v < -100) return -100;
+    return v;
+}
+
+
+/* ==================================================================
+   COMBOS
+   ================================================================== */
+combo AA_Circle {
+    aa_x = aa_pw;    aa_y = 0;        wait(aa_sp);
+    aa_x = aa_d;     aa_y = aa_d;     wait(aa_sp);
+    aa_x = 0;        aa_y = aa_pw;    wait(aa_sp);
+    aa_x = 0-aa_d;   aa_y = aa_d;     wait(aa_sp);
+    aa_x = 0-aa_pw;  aa_y = 0;        wait(aa_sp);
+    aa_x = 0-aa_d;   aa_y = 0-aa_d;   wait(aa_sp);
+    aa_x = 0;        aa_y = 0-aa_pw;  wait(aa_sp);
+    aa_x = aa_d;     aa_y = 0-aa_d;   wait(aa_sp);
+}
+
+combo AA_Pulse {
+    aa_x = aa_pw;    aa_y = 0;  wait(aa_sp);
+    aa_x = 0;        aa_y = 0;  wait(aa_sp2);
+    aa_x = 0-aa_pw;  aa_y = 0;  wait(aa_sp);
+    aa_x = 0;        aa_y = 0;  wait(aa_sp2);
+}
+
+combo AA_Strafe {
+    aa_lx = aa_pw;    wait(aa_spl);
+    aa_lx = 0-aa_pw;  wait(aa_spl);
+}
+
+combo AimSnap {
+    set_val(BTN_ADS, 100);
+    wait(snap_dl);
+    set_val(BTN_ADS, 0);
+    wait(40);
+    set_val(BTN_ADS, 100);
+    snap_x = snap_vx;
+    snap_y = snap_vy;
+    wait(70);
+    snap_x = 0;
+    snap_y = 0;
+    set_val(BTN_ADS, 100);
+    wait(30);
+}
+
+combo QuickScope {
+    set_val(BTN_ADS, 100);
+    wait(qs_d);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_FIRE, 100);
+    wait(qs_h);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(90);
+}
+
+combo AutoRescope {
+    set_val(BTN_ADS, 0);
+    wait(resc_d);
+    set_val(BTN_ADS, 100);
+    wait(250);
+}
+
+combo BoltCancel {
+    wait(bolt_d);
+    set_val(BTN_SWAP, 100);
+    wait(60);
+    set_val(BTN_SWAP, 0);
+    wait(60);
+    set_val(BTN_SWAP, 100);
+    wait(60);
+    set_val(BTN_SWAP, 0);
+    wait(60);
+}
+
+combo RapidFire {
+    set_val(BTN_FIRE, 100);
+    wait(rf_h);
+    set_val(BTN_FIRE, 0);
+    wait(rf_r);
+    set_val(BTN_FIRE, 0);
+}
+
+combo DropShot {
+    set_val(BTN_CROUCH, 100);
+    wait(400);
+    set_val(BTN_CROUCH, 0);
+    wait(200);
+}
+
+combo JumpShot {
+    set_val(BTN_JUMP, 100);
+    wait(70);
+    set_val(BTN_JUMP, 0);
+    wait(330);
+}
+
+combo AutoSprint {
+    set_val(BTN_BREATH, 100);
+    wait(130);
+    set_val(BTN_BREATH, 0);
+    wait(90);
+}
+
+combo YYCancel {
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(200);
+}
+
+combo DiveAssist {
+    set_val(BTN_BREATH, 100);
+    wait(120);
+    set_val(BTN_CROUCH, 100);
+    wait(300);
+    set_val(BTN_CROUCH, 0);
+    wait(400);
+}
+
+combo ReloadCancel {
+    set_val(BTN_RELOAD, 100);
+    wait(60);
+    set_val(BTN_RELOAD, 0);
+    wait(680);
+    set_val(BTN_SWAP, 100);
+    wait(60);
+    set_val(BTN_SWAP, 0);
+    wait(60);
+    set_val(BTN_SWAP, 100);
+    wait(60);
+    set_val(BTN_SWAP, 0);
+    wait(60);
+}
+
+combo TurboMelee {
+    set_val(BTN_MELEE, 100);
+    wait(120);
+    set_val(BTN_MELEE, 0);
+    wait(120);
+}
+
+/* ---------------- TRICKSHOT MACROS ----------------
+   Every one spins blind for ts_a, then keeps spinning while the
+   scope comes up for ts_b, then fires. ---------------- */
+combo TS_Scope {
+    set_val(STK_RX, ts_pow);
+    wait(ts_a);
+    set_val(STK_RX, ts_pow);
+    set_val(BTN_ADS, 100);
+    wait(ts_b);
+    set_val(BTN_ADS, 100);
+    wait(ts_qd);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_FIRE, 100);
+    wait(90);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(200);
+}
+
+combo TS_NoScope {
+    set_val(STK_RX, ts_pow);
+    wait(ts_a);
+    set_val(STK_RX, ts_pow);
+    wait(ts_b);
+    set_val(BTN_FIRE, 100);
+    wait(90);
+    set_val(BTN_FIRE, 0);
+    wait(200);
+}
+
+combo TS_Jump {
+    set_val(BTN_JUMP, 100);
+    wait(70);
+    set_val(BTN_JUMP, 0);
+    set_val(STK_RX, ts_pow);
+    wait(ts_a);
+    set_val(STK_RX, ts_pow);
+    set_val(BTN_ADS, 100);
+    wait(ts_b);
+    set_val(BTN_ADS, 100);
+    wait(ts_qd);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_FIRE, 100);
+    wait(90);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(200);
+}
+
+combo TS_Drop {
+    set_val(STK_RX, ts_pow);
+    wait(ts_a);
+    set_val(STK_RX, ts_pow);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_CROUCH, 100);
+    wait(ts_b);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_CROUCH, 100);
+    wait(ts_qd);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_CROUCH, 0);
+    set_val(BTN_FIRE, 100);
+    wait(90);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(200);
+}
+
+combo TS_Dive {
+    set_val(STK_LY, -100);
+    set_val(BTN_BREATH, 100);
+    wait(150);
+    set_val(STK_LY, -100);
+    set_val(BTN_CROUCH, 100);
+    wait(120);
+    set_val(BTN_CROUCH, 0);
+    set_val(STK_RX, ts_pow);
+    wait(ts_a);
+    set_val(STK_RX, ts_pow);
+    set_val(BTN_ADS, 100);
+    wait(ts_b);
+    set_val(BTN_ADS, 100);
+    wait(ts_qd);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_FIRE, 100);
+    wait(90);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(200);
+}
+
+combo TS_YY {
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    set_val(STK_RX, ts_pow);
+    wait(ts_a);
+    set_val(STK_RX, ts_pow);
+    set_val(BTN_ADS, 100);
+    wait(ts_b);
+    set_val(BTN_ADS, 100);
+    wait(ts_qd);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_FIRE, 100);
+    wait(90);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(200);
+}
+
+combo Buzz {
+    set_rumble(RUMBLE_A, 60);
+    wait(90);
+    reset_rumble();
+}
+
+function buzz() {
+    if(oval[O_RUMBLE]) combo_run(Buzz);
+    return 0;
+}
+
+function stop_all() {
+    combo_stop(AA_Circle);   combo_stop(AA_Pulse);   combo_stop(AA_Strafe);
+    combo_stop(AimSnap);     combo_stop(QuickScope); combo_stop(AutoRescope);
+    combo_stop(BoltCancel);  combo_stop(RapidFire);  combo_stop(DropShot);
+    combo_stop(JumpShot);    combo_stop(AutoSprint); combo_stop(DiveAssist);
+    combo_stop(YYCancel);    combo_stop(ReloadCancel);
+    combo_stop(TurboMelee);
+    stop_ts();
+    aa_x = 0; aa_y = 0; aa_lx = 0;
+    snap_x = 0; snap_y = 0;
+    ar_timer = 0; br_t = 0; ads_t = 0;
+    return 0;
+}
+
+function block_all() {
+    set_val(PS4_LX,0);  set_val(PS4_LY,0);  set_val(PS4_RX,0);  set_val(PS4_RY,0);
+    set_val(PS4_R1,0);  set_val(PS4_R2,0);  set_val(PS4_R3,0);
+    set_val(PS4_L1,0);  set_val(PS4_L2,0);  set_val(PS4_L3,0);
+    set_val(PS4_UP,0);  set_val(PS4_DOWN,0);
+    set_val(PS4_LEFT,0);set_val(PS4_RIGHT,0);
+    set_val(PS4_TRIANGLE,0); set_val(PS4_CIRCLE,0);
+    set_val(PS4_CROSS,0);    set_val(PS4_SQUARE,0);
+    set_val(PS4_OPTIONS,0);  set_val(PS4_SHARE,0);
+    set_val(PS4_TOUCH,0);    set_val(PS4_PS,0);
+    return 0;
+}
+
+
+/* ==================================================================
+   MENU LOGIC
+   ================================================================== */
+function menu_logic() {
+    if(event_press(NAV_PGL)) {
+        m_page = m_page - 1;
+        if(m_page < 0) m_page = PAGE_N - 1;
+        m_item = 0;
+        buzz();
+    }
+    if(event_press(NAV_PGR)) {
+        m_page = m_page + 1;
+        if(m_page >= PAGE_N) m_page = 0;
+        m_item = 0;
+        buzz();
+    }
+    if(event_press(NAV_UP)) {
+        m_item = m_item - 1;
+        if(m_item < 0) m_item = pg_count[m_page] - 1;
+    }
+    if(event_press(NAV_DOWN)) {
+        m_item = m_item + 1;
+        if(m_item >= pg_count[m_page]) m_item = 0;
+    }
+
+    mn_id = pg_first[m_page] + m_item;
+
+    if(event_press(NAV_LEFT))  { adjust(mn_id, -1); rep_t = 0; }
+    if(event_press(NAV_RIGHT)) { adjust(mn_id,  1); rep_t = 0; }
+    if(event_press(NAV_OK))    { adjust(mn_id,  1); rep_t = 0; buzz(); }
+
+    if(get_val(NAV_LEFT) && get_ptime(NAV_LEFT) > 380) {
+        rep_t = rep_t + tick;
+        if(rep_t >= 55) { rep_t = 0; adjust(mn_id, -3); }
+    }
+    if(get_val(NAV_RIGHT) && get_ptime(NAV_RIGHT) > 380) {
+        rep_t = rep_t + tick;
+        if(rep_t >= 55) { rep_t = 0; adjust(mn_id, 3); }
+    }
+
+    if(event_press(NAV_DEF)) {
+        if(otyp[mn_id] != T_ACT) oval[mn_id] = odef[mn_id];
+        buzz();
+    }
+
+    if(event_press(NAV_EXIT)) {
+        save_all();
+        menu_open = 0;
+        flash(1);
+        buzz();
+    }
+    return 0;
+}
+
+function adjust(id, dir) {
+    if(otyp[id] == T_ACT) {
+        do_action(id);
+    } else {
+        if(otyp[id] == T_ONOFF) {
+            oval[id] = !oval[id];
+        } else {
+            aj_v = oval[id] + (dir * ostp[id]);
+            if(aj_v > omax[id]) aj_v = omin[id];
+            if(aj_v < omin[id]) aj_v = omax[id];
+            oval[id] = aj_v;
+        }
+    }
+    return 0;
+}
+
+function do_action(id) {
+    if(id == O_APPLY) { apply_preset(); flash(2); }
+    if(id == O_SAVE)  { save_all();     flash(1); }
+    if(id == O_RESET) { load_defaults(); save_all(); flash(0); }
+    buzz();
+    return 0;
+}
+
+function flash(n) {
+    notif_id = n;
+    notif_t  = 900;
+    return 0;
+}
+
+
+/* ==================================================================
+   WEAPON PRESETS
+   ================================================================== */
+function apply_preset() {
+    pp_sel = oval[O_PRESET];
+
+    if(pp_sel == 1) {                   /* DSR-50 - slowest, hardest hitting */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=26; oval[O_BREATH]=1;
+        oval[O_BOLT_ON]=1; oval[O_BOLT_DLY]=45;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=9;
+        oval[O_RF_ON]=0;  oval[O_AR_ON]=0;
+    }
+    if(pp_sel == 2) {                   /* BALLISTA - faster bolt */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=21; oval[O_BREATH]=1;
+        oval[O_BOLT_ON]=1; oval[O_BOLT_DLY]=38;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=10;
+        oval[O_RF_ON]=0;  oval[O_AR_ON]=0;
+    }
+    if(pp_sel == 3) {                   /* SVU-AS - semi auto */
+        oval[O_QS_ON]=0;  oval[O_BREATH]=2; oval[O_BOLT_ON]=0;
+        oval[O_RF_ON]=1;  oval[O_RF_HOLD]=30; oval[O_RF_REST]=30;
+        oval[O_AR_ON]=1;  oval[O_AR_VERT]=16;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=11;
+    }
+    if(pp_sel == 4) {                   /* XPR-50 - semi auto, snappier */
+        oval[O_QS_ON]=0;  oval[O_BREATH]=2; oval[O_BOLT_ON]=0;
+        oval[O_RF_ON]=1;  oval[O_RF_HOLD]=26; oval[O_RF_REST]=26;
+        oval[O_AR_ON]=1;  oval[O_AR_VERT]=14;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=11;
+    }
+    if(pp_sel == 5) {                   /* QS RUSH - aggressive quickscoping */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=18; oval[O_QS_HOLD]=8;
+        oval[O_RESCOPE]=1; oval[O_RESC_DLY]=28;
+        oval[O_BREATH]=2; oval[O_HAIR]=1; oval[O_TRIGPT]=20;
+        oval[O_JUMPS]=1;  oval[O_SNAP_ON]=1; oval[O_SCOPE_BAIT]=1;
+        oval[O_AA_MODE]=4; oval[O_AA_POWER]=13;
+    }
+    if(pp_sel == 6) {                   /* TRICK - trickshot loadout */
+        oval[O_TS_ON]=1;  oval[O_TS_SPIN]=60; oval[O_TS_DIR]=2;
+        oval[O_BIND_U]=1; oval[O_BIND_D]=7;
+        oval[O_BIND_L]=4; oval[O_BIND_R]=3;
+        oval[O_QS_ON]=0;  oval[O_BREATH]=1;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=10;
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   TABLE SETUP
+   ================================================================== */
+function reg(rid, rmn, rmx, rst, rty, rdv) {
+    omin[rid] = rmn;  omax[rid] = rmx;  ostp[rid] = rst;
+    otyp[rid] = rty;  odef[rid] = rdv;
+    return 0;
+}
+
+function build_table() {
+    reg(O_AA_MODE,    0,   4, 1, T_AAMODE, 1);
+    reg(O_AA_POWER,   0,  40, 1, T_NUM,   10);
+    reg(O_AA_SPEED,   4,  40, 1, T_NUM,   10);
+    reg(O_AA_WHEN,    0,   3, 1, T_WHEN,   0);
+    reg(O_AA_HIP,     0,   1, 1, T_ONOFF,  0);
+
+    reg(O_SNAP_ON,    0,   1, 1, T_ONOFF,  1);
+    reg(O_SNAP_PULL,  0,  40, 1, T_NUM,   12);
+    reg(O_SNAP_DLY,   2,  30, 1, T_NUM,    6);
+    reg(O_SNAP_DIR,   0,   3, 1, T_DIR4,   0);
+    reg(O_SCOPE_BAIT, 0,   1, 1, T_ONOFF,  1);
+
+    reg(O_BREATH,     0,   3, 1, T_BREATH, 1);
+    reg(O_BR_DLY,     0,  50, 1, T_NUM,    8);
+    reg(O_BR_HOLD,    5,  60, 1, T_NUM,   35);
+    reg(O_BR_REST,    0,   1, 1, T_ONOFF,  1);
+
+    reg(O_QS_ON,      0,   1, 1, T_ONOFF,  0);
+    reg(O_QS_DLY,     5,  60, 1, T_NUM,   22);
+    reg(O_QS_HOLD,    2,  20, 1, T_NUM,    8);
+    reg(O_RESCOPE,    0,   1, 1, T_ONOFF,  0);
+    reg(O_RESC_DLY,   5,  60, 1, T_NUM,   30);
+
+    reg(O_BOLT_ON,    0,   1, 1, T_ONOFF,  0);
+    reg(O_BOLT_DLY,   5,  80, 1, T_NUM,   42);
+    reg(O_RELCAN,     0,   1, 1, T_ONOFF,  0);
+
+    reg(O_RF_ON,      0,   1, 1, T_ONOFF,  0);
+    reg(O_RF_HOLD,   10, 120, 2, T_NUM,   30);
+    reg(O_RF_REST,   10, 120, 2, T_NUM,   30);
+    reg(O_AR_ON,      0,   1, 1, T_ONOFF,  0);
+    reg(O_AR_VERT,    0, 100, 1, T_NUM,   16);
+
+    reg(O_DROP,       0,   3, 1, T_TRIG,   0);
+    reg(O_JUMPS,      0,   3, 1, T_TRIG,   0);
+    reg(O_SPRINT,     0,   1, 1, T_ONOFF,  1);
+    reg(O_YYCAN,      0,   1, 1, T_ONOFF,  0);
+    reg(O_DIVE,       0,   1, 1, T_ONOFF,  0);
+
+    reg(O_HAIR,       0,   1, 1, T_ONOFF,  1);
+    reg(O_TRIGPT,     5,  95, 5, T_NUM,   25);
+    reg(O_MELEE,      0,   1, 1, T_ONOFF,  0);
+
+    reg(O_TS_ON,      0,   1, 1, T_ONOFF,  0);
+    reg(O_TS_MOD,     0,   3, 1, T_TSMOD,  0);
+    reg(O_TS_SPIN,   20, 120, 1, T_NUM,   60);   /* x10ms -> 200..1200 */
+    reg(O_TS_DIR,     0,   2, 1, T_SPIN,   2);
+    reg(O_TS_SCOPE,   0,   2, 1, T_TSSCP,  0);
+
+    reg(O_BIND_U,     0,   8, 1, T_MACRO,  0);
+    reg(O_BIND_D,     0,   8, 1, T_MACRO,  0);
+    reg(O_BIND_L,     0,   8, 1, T_MACRO,  0);
+    reg(O_BIND_R,     0,   8, 1, T_MACRO,  0);
+
+    reg(O_IDLE_VIEW,  0,   2, 1, T_IDLE,   0);
+    reg(O_ANIM,       0,   1, 1, T_ONOFF,  1);
+    reg(O_RUMBLE,     0,   1, 1, T_ONOFF,  1);
+
+    reg(O_PRESET,     0,   6, 1, T_PRESET, 0);
+    reg(O_APPLY,      0,   0, 0, T_ACT,    0);
+    reg(O_SAVE,       0,   0, 0, T_ACT,    0);
+    reg(O_RESET,      0,   0, 0, T_ACT,    0);
+    return 0;
+}
+
+function build_pages() {
+    pg_first[0]  = 0;   pg_count[0]  = 5;   /* AIM ASSIST */
+    pg_first[1]  = 5;   pg_count[1]  = 5;   /* SCOPE IN   */
+    pg_first[2]  = 10;  pg_count[2]  = 4;   /* BREATH     */
+    pg_first[3]  = 14;  pg_count[3]  = 5;   /* QUICKSCOPE */
+    pg_first[4]  = 19;  pg_count[4]  = 3;   /* BOLT WORK  */
+    pg_first[5]  = 22;  pg_count[5]  = 5;   /* SEMI AUTO  */
+    pg_first[6]  = 27;  pg_count[6]  = 5;   /* MOVEMENT   */
+    pg_first[7]  = 32;  pg_count[7]  = 3;   /* TRIGGERS   */
+    pg_first[8]  = 35;  pg_count[8]  = 5;   /* TRICKSHOT  */
+    pg_first[9]  = 40;  pg_count[9]  = 4;   /* TS BINDS   */
+    pg_first[10] = 44;  pg_count[10] = 3;   /* DISPLAY    */
+    pg_first[11] = 47;  pg_count[11] = 4;   /* SYSTEM     */
+    return 0;
+}
+
+function load_defaults() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        oval[ld_i] = odef[ld_i];
+        ld_i = ld_i + 1;
+    }
+    return 0;
+}
+
+function clamp_all() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        if(otyp[ld_i] != T_ACT) {
+            if(oval[ld_i] > omax[ld_i]) oval[ld_i] = omax[ld_i];
+            if(oval[ld_i] < omin[ld_i]) oval[ld_i] = omin[ld_i];
+        }
+        ld_i = ld_i + 1;
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   PERSISTENT STORAGE - 14 slot vars, bit-packed
+   ================================================================== */
+function bitof(bv, bb) {
+    return (bv >> bb) & 1;
+}
+
+function save_all() {
+    sv_a = oval[O_AA_HIP]
+         + (oval[O_SNAP_ON]    << 1)
+         + (oval[O_SCOPE_BAIT] << 2)
+         + (oval[O_BR_REST]    << 3)
+         + (oval[O_QS_ON]      << 4)
+         + (oval[O_RESCOPE]    << 5)
+         + (oval[O_BOLT_ON]    << 6)
+         + (oval[O_RELCAN]     << 7)
+         + (oval[O_RF_ON]      << 8)
+         + (oval[O_AR_ON]      << 9)
+         + (oval[O_SPRINT]     << 10)
+         + (oval[O_YYCAN]      << 11)
+         + (oval[O_DIVE]       << 12)
+         + (oval[O_HAIR]       << 13);
+    set_pvar(SPVAR_1, sv_a);
+
+    /* MELEE lives here, not in sv_a: 15 bits of bools would top out at
+       32767 and get clipped by the get_pvar ceiling. */
+    sv_b = oval[O_TS_ON]
+         + (oval[O_ANIM]   << 1)
+         + (oval[O_RUMBLE] << 2)
+         + (oval[O_MELEE]  << 3);
+    set_pvar(SPVAR_2, sv_b);
+
+    set_pvar(SPVAR_3, oval[O_AA_MODE]
+                    + (oval[O_AA_WHEN]  << 3)
+                    + (oval[O_SNAP_DIR] << 5)
+                    + (oval[O_BREATH]   << 7)
+                    + (oval[O_DROP]     << 9)
+                    + (oval[O_JUMPS]    << 11));
+
+    set_pvar(SPVAR_4, oval[O_TS_MOD]
+                    + (oval[O_TS_DIR]     << 2)
+                    + (oval[O_TS_SCOPE]   << 4)
+                    + (oval[O_IDLE_VIEW]  << 6)
+                    + (oval[O_PRESET]     << 8));
+
+    set_pvar(SPVAR_5,  oval[O_BIND_U]   + (oval[O_BIND_D]  << 4));
+    set_pvar(SPVAR_6,  oval[O_BIND_L]   + (oval[O_BIND_R]  << 4));
+
+    set_pvar(SPVAR_7,  oval[O_AA_POWER] + (oval[O_AA_SPEED] << 7));
+    set_pvar(SPVAR_8,  oval[O_SNAP_PULL]+ (oval[O_SNAP_DLY] << 7));
+    set_pvar(SPVAR_9,  oval[O_BR_DLY]   + (oval[O_BR_HOLD]  << 7));
+    set_pvar(SPVAR_10, oval[O_QS_DLY]   + (oval[O_QS_HOLD]  << 7));
+    set_pvar(SPVAR_11, oval[O_RESC_DLY] + (oval[O_BOLT_DLY] << 7));
+    set_pvar(SPVAR_12, oval[O_RF_HOLD]  + (oval[O_RF_REST]  << 7));
+    set_pvar(SPVAR_13, oval[O_AR_VERT]  + (oval[O_TRIGPT]   << 7));
+    set_pvar(SPVAR_14, oval[O_TS_SPIN]  + (91 << 7));    /* 91 = magic */
+    return 0;
+}
+
+function load_all() {
+    lo_c = get_pvar(SPVAR_14, 0, 32000, 0);
+    if((lo_c >> 7) != 91) {
+        save_all();                 /* nothing valid stored - keep defaults */
+    } else {
+        oval[O_TS_SPIN] = lo_c & 127;
+
+        lo_c = get_pvar(SPVAR_1, 0, 32000, 0);
+        oval[O_AA_HIP]     = bitof(lo_c, 0);
+        oval[O_SNAP_ON]    = bitof(lo_c, 1);
+        oval[O_SCOPE_BAIT] = bitof(lo_c, 2);
+        oval[O_BR_REST]    = bitof(lo_c, 3);
+        oval[O_QS_ON]      = bitof(lo_c, 4);
+        oval[O_RESCOPE]    = bitof(lo_c, 5);
+        oval[O_BOLT_ON]    = bitof(lo_c, 6);
+        oval[O_RELCAN]     = bitof(lo_c, 7);
+        oval[O_RF_ON]      = bitof(lo_c, 8);
+        oval[O_AR_ON]      = bitof(lo_c, 9);
+        oval[O_SPRINT]     = bitof(lo_c, 10);
+        oval[O_YYCAN]      = bitof(lo_c, 11);
+        oval[O_DIVE]       = bitof(lo_c, 12);
+        oval[O_HAIR]       = bitof(lo_c, 13);
+
+        lo_c = get_pvar(SPVAR_2, 0, 32000, 0);
+        oval[O_TS_ON]  = bitof(lo_c, 0);
+        oval[O_ANIM]   = bitof(lo_c, 1);
+        oval[O_RUMBLE] = bitof(lo_c, 2);
+        oval[O_MELEE]  = bitof(lo_c, 3);
+
+        lo_c = get_pvar(SPVAR_3, 0, 32000, 0);
+        oval[O_AA_MODE]  =  lo_c        & 7;
+        oval[O_AA_WHEN]  = (lo_c >> 3)  & 3;
+        oval[O_SNAP_DIR] = (lo_c >> 5)  & 3;
+        oval[O_BREATH]   = (lo_c >> 7)  & 3;
+        oval[O_DROP]     = (lo_c >> 9)  & 3;
+        oval[O_JUMPS]    = (lo_c >> 11) & 3;
+
+        lo_c = get_pvar(SPVAR_4, 0, 32000, 0);
+        oval[O_TS_MOD]    =  lo_c       & 3;
+        oval[O_TS_DIR]    = (lo_c >> 2) & 3;
+        oval[O_TS_SCOPE]  = (lo_c >> 4) & 3;
+        oval[O_IDLE_VIEW] = (lo_c >> 6) & 3;
+        oval[O_PRESET]    = (lo_c >> 8) & 7;
+
+        lo_c = get_pvar(SPVAR_5, 0, 32000, 0);
+        oval[O_BIND_U] = lo_c & 15;   oval[O_BIND_D] = (lo_c >> 4) & 15;
+        lo_c = get_pvar(SPVAR_6, 0, 32000, 0);
+        oval[O_BIND_L] = lo_c & 15;   oval[O_BIND_R] = (lo_c >> 4) & 15;
+
+        lo_c = get_pvar(SPVAR_7, 0, 32000, 0);
+        oval[O_AA_POWER]  = lo_c & 127;  oval[O_AA_SPEED] = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_8, 0, 32000, 0);
+        oval[O_SNAP_PULL] = lo_c & 127;  oval[O_SNAP_DLY] = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_9, 0, 32000, 0);
+        oval[O_BR_DLY]    = lo_c & 127;  oval[O_BR_HOLD]  = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_10, 0, 32000, 0);
+        oval[O_QS_DLY]    = lo_c & 127;  oval[O_QS_HOLD]  = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_11, 0, 32000, 0);
+        oval[O_RESC_DLY]  = lo_c & 127;  oval[O_BOLT_DLY] = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_12, 0, 32000, 0);
+        oval[O_RF_HOLD]   = lo_c & 127;  oval[O_RF_REST]  = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_13, 0, 32000, 0);
+        oval[O_AR_VERT]   = lo_c & 127;  oval[O_TRIGPT]   = (lo_c >> 7) & 127;
+
+        clamp_all();
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   NUMBER RENDERING
+   ================================================================== */
+function print_num(nx, ny, nfont, ncol, nval) {
+    np_v   = nval;
+    np_neg = 0;
+    if(np_v < 0) { np_neg = 1; np_v = 0 - np_v; }
+
+    np_n = 0;
+    if(np_v == 0) {
+        np_dig[0] = 0;
+        np_n = 1;
+    }
+    while(np_v > 0) {
+        np_dig[np_n] = np_v % 10;
+        np_v = np_v / 10;
+        np_n = np_n + 1;
+    }
+
+    np_i = 1;
+    if(np_neg) {
+        putc_oled(1, CH_MINUS);
+        np_i = 2;
+    }
+    np_j = np_n;
+    while(np_j > 0) {
+        np_j = np_j - 1;
+        putc_oled(np_i, CH_ZERO + np_dig[np_j]);
+        np_i = np_i + 1;
+    }
+    puts_oled(nx, ny, nfont, np_i - 1, ncol);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED PRIMITIVES
+   ================================================================== */
+
+/* duplex sniper reticle: ring, four posts stopping short of centre */
+function draw_reticle(cx, cy, rr, gp) {
+    circle_oled(cx, cy, rr, 0, OLED_WHITE);
+    if(rr > 4) circle_oled(cx, cy, rr - 1, 0, OLED_WHITE);
+    line_oled(cx - rr, cy, cx - gp, cy, 1, OLED_WHITE);
+    line_oled(cx + gp, cy, cx + rr, cy, 1, OLED_WHITE);
+    line_oled(cx, cy - rr, cx, cy - gp, 1, OLED_WHITE);
+    line_oled(cx, cy + gp, cx, cy + rr, 1, OLED_WHITE);
+    pixel_oled(cx, cy, OLED_WHITE);
+    return 0;
+}
+
+/* small standing figure */
+function draw_target(gx, gy) {
+    circle_oled(gx, gy, 3, 1, OLED_WHITE);
+    rect_oled(gx - 3, gy + 4, 7, 9, 1, OLED_WHITE);
+    line_oled(gx - 3, gy + 6, gx - 6, gy + 11, 1, OLED_WHITE);
+    line_oled(gx + 3, gy + 6, gx + 6, gy + 11, 1, OLED_WHITE);
+    line_oled(gx - 2, gy + 13, gx - 4, gy + 19, 1, OLED_WHITE);
+    line_oled(gx + 2, gy + 13, gx + 4, gy + 19, 1, OLED_WHITE);
+    return 0;
+}
+
+/* the CoD hitmarker: four diagonals with a hole in the middle */
+function draw_hit(hx, hy) {
+    line_oled(hx - 10, hy - 10, hx - 4, hy - 4, 1, OLED_WHITE);
+    line_oled(hx + 10, hy - 10, hx + 4, hy - 4, 1, OLED_WHITE);
+    line_oled(hx - 10, hy + 10, hx - 4, hy + 4, 1, OLED_WHITE);
+    line_oled(hx + 10, hy + 10, hx + 4, hy + 4, 1, OLED_WHITE);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - BOOT
+     0..1400    target drifts, scope rings close, target SNAPS centre
+     1400..1550 full-screen muzzle flash
+     1550..2200 hitmarker over the reticle
+     2200..3600 title + ARMING bar
+   ================================================================== */
+function draw_boot() {
+    cls_oled(OLED_BLACK);
+
+    if(boot_t < 1400) {
+        bt_r = 30 - ((boot_t * 12) / 1400);        /* ring 30 -> 18   */
+        bt_g = 12 - ((boot_t * 8)  / 1400);        /* post gap 12 -> 4 */
+        if(boot_t < 600) {
+            bt_x = 88;
+        } else if(boot_t < 1000) {
+            bt_x = 88 - (((boot_t - 600) * 24) / 400);   /* the snap */
+        } else {
+            bt_x = 64;
+        }
+        draw_target(bt_x, 24);
+        draw_reticle(64, 34, bt_r, bt_g);
+
+    } else if(boot_t < 1550) {
+        rect_oled(0, 0, 128, 64, 1, OLED_WHITE);   /* muzzle flash */
+
+    } else if(boot_t < 2200) {
+        draw_reticle(64, 34, 18, 4);
+        draw_hit(64, 34);
+
+    } else {
+        rect_oled(0, 0, 128, 14, 1, OLED_WHITE);
+        print(31, 2, OLED_FONT_MEDIUM, OLED_BLACK, T_TITLE[0]);
+        draw_reticle(64, 30, 10, 3);
+        print(22, 44, OLED_FONT_SMALL, OLED_WHITE, T_VER[0]);
+        bt_w = ((boot_t - 2200) * 124) / 1300;
+        if(bt_w > 124) bt_w = 124;
+        rect_oled(0, 55, 128, 8, 0, OLED_WHITE);
+        rect_oled(2, 57, bt_w, 4, 1, OLED_WHITE);
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - IDLE
+   Two views. AUTO alternates every 4s.
+     SCOPE : reticle breathing in a figure-eight. The sway collapses
+             when Auto Hold Breath is on, so the display shows you
+             the setting is live.
+     BINDS : what each D-pad direction will fire.
+   ================================================================== */
+function draw_idle() {
+    cls_oled(OLED_BLACK);
+
+    rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+    print(28, 2, OLED_FONT_SMALL, OLED_BLACK, T_SUB[0]);
+    if(oval[O_ANIM]) {
+        id_s = (anim % 26) * 6;
+        rect_oled(id_s, 0, 5, 12, 1, OLED_BLACK);
+    }
+
+    if(master_off) {
+        rect_oled(4, 22, 120, 20, 0, OLED_WHITE);
+        print(20, 27, OLED_FONT_MEDIUM, OLED_WHITE, T_OFF[0]);
+        print(10, 50, OLED_FONT_SMALL, OLED_WHITE, T_REARM[0]);
+        return 0;
+    }
+
+    id_v = oval[O_IDLE_VIEW];
+    if(id_v == 0) {
+        id_v = 1 + ((anim / 80) % 2);       /* AUTO: swap every 4s */
+    }
+
+    if(id_v == 1) draw_view_scope();
+    else draw_view_binds();
+    return 0;
+}
+
+function draw_view_scope() {
+    /* figure-eight sway: x on the fundamental, y at double rate */
+    id_amp = 5;
+    if(oval[O_BREATH] > 0) id_amp = 1;      /* breath held = steady */
+    if(!oval[O_ANIM]) id_amp = 0;
+
+    id_i  = anim % 16;
+    id_sx = ((SINE[id_i] - 100) * id_amp) / 100;
+    id_i  = (anim * 2) % 16;
+    id_sy = ((SINE[id_i] - 100) * id_amp) / 150;
+
+    draw_reticle(28 + id_sx, 34 + id_sy, 15, 4);
+    line_oled(52, 15, 52, 49, 1, OLED_WHITE);
+
+    print(57, 16, OLED_FONT_SMALL, OLED_WHITE, T_AA[0]);
+    print(76, 16, OLED_FONT_SMALL, OLED_WHITE, V_AAMODE[oval[O_AA_MODE]]);
+
+    print(57, 28, OLED_FONT_SMALL, OLED_WHITE, T_BR[0]);
+    print(76, 28, OLED_FONT_SMALL, OLED_WHITE, V_BREATH[oval[O_BREATH]]);
+
+    print(57, 40, OLED_FONT_SMALL, OLED_WHITE, T_QS[0]);
+    if(oval[O_QS_ON]) print_num(76, 40, OLED_FONT_SMALL, OLED_WHITE, oval[O_QS_DLY] * 10);
+    else print(76, 40, OLED_FONT_SMALL, OLED_WHITE, V_ONOFF[0]);
+
+    chip_x = 1;
+    if(oval[O_AA_MODE])  chip(0);
+    if(oval[O_BREATH])   chip(1);
+    if(oval[O_QS_ON])    chip(2);
+    if(oval[O_RESCOPE])  chip(3);
+    if(oval[O_BOLT_ON])  chip(4);
+    if(oval[O_TS_ON])    chip(5);
+    if(oval[O_RF_ON])    chip(6);
+    return 0;
+}
+
+function draw_view_binds() {
+    print(4, 16, OLED_FONT_SMALL, OLED_WHITE, DIRL[0]);
+    print(46, 16, OLED_FONT_SMALL, OLED_WHITE, V_MACRO[oval[O_BIND_U]]);
+    print(4, 27, OLED_FONT_SMALL, OLED_WHITE, DIRL[1]);
+    print(46, 27, OLED_FONT_SMALL, OLED_WHITE, V_MACRO[oval[O_BIND_D]]);
+    print(4, 38, OLED_FONT_SMALL, OLED_WHITE, DIRL[2]);
+    print(46, 38, OLED_FONT_SMALL, OLED_WHITE, V_MACRO[oval[O_BIND_L]]);
+    print(4, 49, OLED_FONT_SMALL, OLED_WHITE, DIRL[3]);
+    print(46, 49, OLED_FONT_SMALL, OLED_WHITE, V_MACRO[oval[O_BIND_R]]);
+
+    /* little D-pad glyph, arms lighting up in rotation */
+    id_i = (anim / 8) % 4;
+    if(!oval[O_ANIM]) id_i = 9;
+    rect_oled(103, 24, 8, 8, 0, OLED_WHITE);
+    rect_oled(103, 40, 8, 8, 0, OLED_WHITE);
+    rect_oled(95,  32, 8, 8, 0, OLED_WHITE);
+    rect_oled(111, 32, 8, 8, 0, OLED_WHITE);
+    rect_oled(103, 32, 8, 8, 0, OLED_WHITE);
+    if(id_i == 0) rect_oled(103, 24, 8, 8, 1, OLED_WHITE);
+    if(id_i == 1) rect_oled(103, 40, 8, 8, 1, OLED_WHITE);
+    if(id_i == 2) rect_oled(95,  32, 8, 8, 1, OLED_WHITE);
+    if(id_i == 3) rect_oled(111, 32, 8, 8, 1, OLED_WHITE);
+    return 0;
+}
+
+function chip(ci) {
+    rect_oled(chip_x, 53, 16, 10, 1, OLED_WHITE);
+    print(chip_x + 1, 55, OLED_FONT_SMALL, OLED_BLACK, CHIP[ci]);
+    chip_x = chip_x + 18;
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - NOTIFICATIONS
+   ================================================================== */
+function draw_notif() {
+    cls_oled(OLED_BLACK);
+    rect_oled(0, 0, 128, 64, 0, OLED_WHITE);
+    rect_oled(3, 3, 122, 58, 0, OLED_WHITE);
+    if(notif_id == 0) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[0]);
+    if(notif_id == 1) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[1]);
+    if(notif_id == 2) print(31, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[2]);
+    if(notif_id == 3) print(31, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[3]);
+    if(notif_id == 4) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[4]);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - MENU
+   ================================================================== */
+function draw_menu() {
+    cls_oled(OLED_BLACK);
+    dm_base = pg_first[m_page];
+    dm_n    = pg_count[m_page];
+
+    rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+    print(3, 2, OLED_FONT_SMALL, OLED_BLACK, PGN[m_page]);
+
+    /* page counter "n/12" */
+    if(m_page >= 9) {
+        putc_oled(1, CH_ZERO + 1);
+        putc_oled(2, CH_ZERO + ((m_page + 1) % 10));
+        dm_c = 3;
+    } else {
+        putc_oled(1, CH_ZERO + m_page + 1);
+        dm_c = 2;
+    }
+    putc_oled(dm_c,     CH_SLASH);
+    putc_oled(dm_c + 1, CH_ZERO + 1);
+    putc_oled(dm_c + 2, CH_ZERO + 2);
+    puts_oled(88, 2, OLED_FONT_SMALL, dm_c + 2, OLED_BLACK);
+
+    dm_i = 0;
+    while(dm_i < dm_n) {
+        dm_y  = 15 + (dm_i * 10);
+        dm_id = dm_base + dm_i;
+        if(dm_i == m_item) {
+            rect_oled(0, dm_y - 1, 120, 10, 1, OLED_WHITE);
+            print(3, dm_y, OLED_FONT_SMALL, OLED_BLACK, LBL[dm_id]);
+            draw_value(dm_id, 76, dm_y, OLED_BLACK);
+        } else {
+            print(3, dm_y, OLED_FONT_SMALL, OLED_WHITE, LBL[dm_id]);
+            draw_value(dm_id, 76, dm_y, OLED_WHITE);
+        }
+        dm_i = dm_i + 1;
+    }
+
+    rect_oled(121, 14, 5, 50, 0, OLED_WHITE);
+    rect_oled(121, 14 + ((m_item * 46) / dm_n), 5, (46 / dm_n) + 4, 1, OLED_WHITE);
+    return 0;
+}
+
+function draw_value(id, vx, vy, vc) {
+    dv_t = otyp[id];
+    if(dv_t == T_NUM)    print_num(vx, vy, OLED_FONT_SMALL, vc, oval[id]);
+    if(dv_t == T_ONOFF)  print(vx, vy, OLED_FONT_SMALL, vc, V_ONOFF[oval[id]]);
+    if(dv_t == T_AAMODE) print(vx, vy, OLED_FONT_SMALL, vc, V_AAMODE[oval[id]]);
+    if(dv_t == T_WHEN)   print(vx, vy, OLED_FONT_SMALL, vc, V_WHEN[oval[id]]);
+    if(dv_t == T_DIR4)   print(vx, vy, OLED_FONT_SMALL, vc, V_DIR4[oval[id]]);
+    if(dv_t == T_BREATH) print(vx, vy, OLED_FONT_SMALL, vc, V_BREATH[oval[id]]);
+    if(dv_t == T_TRIG)   print(vx, vy, OLED_FONT_SMALL, vc, V_TRIG[oval[id]]);
+    if(dv_t == T_TSMOD)  print(vx, vy, OLED_FONT_SMALL, vc, V_TSMOD[oval[id]]);
+    if(dv_t == T_SPIN)   print(vx, vy, OLED_FONT_SMALL, vc, V_SPIN[oval[id]]);
+    if(dv_t == T_TSSCP)  print(vx, vy, OLED_FONT_SMALL, vc, V_TSSCP[oval[id]]);
+    if(dv_t == T_IDLE)   print(vx, vy, OLED_FONT_SMALL, vc, V_IDLE[oval[id]]);
+    if(dv_t == T_MACRO)  print(vx, vy, OLED_FONT_SMALL, vc, V_MACRO[oval[id]]);
+    if(dv_t == T_PRESET) print(vx, vy, OLED_FONT_SMALL, vc, V_PRESET[oval[id]]);
+    if(dv_t == T_ACT)    print(vx, vy, OLED_FONT_SMALL, vc, T_GO[0]);
+    return 0;
+}

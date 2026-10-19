@@ -1,0 +1,95 @@
+═══════════════════════════════════════════════════════════════════════════════
+  WIZ SMART LIGHT CONTROL SYSTEM - QUICK REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+MAIN CONTROL
+═════════════
+  wiz_master_control.bat      → Interactive menu for all light control
+  test_all_lights.bat         → Test connectivity and functionality
+
+INDIVIDUAL LIGHT CONTROL (Batch Files)
+════════════════════════════════════════
+  Light 1 (192.168.0.151):    light1_control.bat
+  Light 2 (192.168.0.208):    light2_control.bat
+  Light 3 (192.168.0.243):    light3_control.bat
+  Light 4 (192.168.0.140):    light4_control.bat
+
+BATCH FILE COMMANDS
+═══════════════════
+  light1_control.bat on
+  light1_control.bat off
+  light1_control.bat brightness 50       (0-100)
+  light1_control.bat color FF0000         (hex RGB)
+
+POWERSHELL COMMANDS
+═══════════════════
+  .\WizLightControl.ps1 allon            → Turn all lights on
+  .\WizLightControl.ps1 alloff           → Turn all lights off
+  .\WizLightControl.ps1 test             → Test all lights
+  .\WizLightControl.ps1 on 1             → Turn on Light 1
+  .\WizLightControl.ps1 off 2            → Turn off Light 2
+  .\WizLightControl.ps1 brightness 3 75  → Light 3 to 75% brightness
+
+COLOR EXAMPLES (Hex RGB)
+═════════════════════════
+  FF0000 - Red
+  00FF00 - Green
+  0000FF - Blue
+  FFFF00 - Yellow
+  FF00FF - Magenta
+  00FFFF - Cyan
+  FFFFFF - White
+
+COMMON SCENARIOS
+════════════════
+Morning Routine:
+  light1_control.bat brightness 30
+  light2_control.bat brightness 30
+  light3_control.bat brightness 30
+  light4_control.bat brightness 30
+
+Evening Routine:
+  light1_control.bat brightness 20
+  light2_control.bat brightness 20
+  light3_control.bat brightness 20
+  light4_control.bat brightness 20
+
+All Lights Off:
+  .\WizLightControl.ps1 alloff
+
+All Lights On at 100%:
+  light1_control.bat brightness 100
+  light2_control.bat brightness 100
+  light3_control.bat brightness 100
+  light4_control.bat brightness 100
+
+LIGHT CONFIGURATION
+═══════════════════
+  Light 1: Living Room    - 192.168.0.151
+  Light 2: Bedroom        - 192.168.0.208
+  Light 3: Kitchen        - 192.168.0.243
+  Light 4: Office         - 192.168.0.140
+
+PORT: 38899
+
+DOCUMENTATION
+══════════════
+  WIZ_SETUP_GUIDE.md      → Full setup and troubleshooting guide
+  wiz_config.json         → Configuration file (light names, IPs, locations)
+
+TIPS
+═════
+  • Use wiz_master_control.bat for interactive control
+  • Use batch files for quick command-line control
+  • Use PowerShell script for automation and scripting
+  • Always run test_all_lights.bat if having issues
+  • Set static IPs on your router for reliability
+
+TROUBLESHOOTING
+════════════════
+  Lights not responding?   → Run test_all_lights.bat
+  Can't find lights?       → Check IP addresses and network connection
+  Commands failing?        → Try running as Administrator
+  Need more help?          → See WIZ_SETUP_GUIDE.md
+
+═══════════════════════════════════════════════════════════════════════════════

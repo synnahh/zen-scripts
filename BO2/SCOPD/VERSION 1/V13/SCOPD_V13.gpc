@@ -1,0 +1,2603 @@
+/* ==================================================================
+   S C O P ' D
+   ------------------------------------------------------------------
+   Black Ops II  //  Cronus Zen / GPC                     v4.3
+   SNIPER BUILD  -  OFFLINE / BOT LOBBY / CAMPAIGN
+   ------------------------------------------------------------------
+   MENU        : hold L2 + tap OPTIONS
+   MASTER KILL : hold L2 + tap SHARE
+   ------------------------------------------------------------------
+   v4.3 - PAGE COUNTER FIX, XTRA DOWN, TS AUTO
+
+   Page header was showing "14/12": the "/N" total was never a real
+   number, it was two hardcoded characters '1' and '2' left over from
+   when there were 12 pages. Both halves of the counter render off
+   the real page numbers now.
+
+   STEAL EMBLEM gained XTRA DOWN (0-6, default 4): extra DOWN presses
+   tacked onto the base 2 at the end of the sequence. This needed the
+   macro to stop being a combo - combos can't loop or branch, and a
+   runtime-variable repeat count needs both - so it's now a small
+   tick-driven sequencer (se_start/se_run) instead, same pattern the
+   trickshot engine already uses for its own windows.
+
+   SYSTEM gained TS AUTO: loads the tested TS TIMING baseline (TAP
+   28, GAP 24, STAGE 7, LEAD 0, PRE 8, FIN 4, TAIL 6) in one press
+   instead of resetting seven lines by hand with TRIANGLE. It's the
+   documented starting point, not a live calibration - CALIBRATE's
+   FIRE TEST / APPLY FIX / TUNE GAP is still what actually tunes it
+   to your setup from there.
+   ------------------------------------------------------------------
+   v4.2 - STEAL EMBLEM TAB
+
+   New page, nothing else touched. STEAL EMBLEM is a fixed menu-
+   navigation sequence for the Barracks emblem-copy glitch - X,
+   Circle x3, X, X, Down x2 - fired by a bindable trigger (L3/R3/L1/
+   R1) while ENABLE is on, with its own TAP/GAP timing since a menu's
+   input window behaves nothing like a match's. FIRE TEST runs it
+   once from the menu for tuning. It's a straight combo, not the
+   trickshot sequencer - the sequence is fixed length and strictly
+   serial, nothing to overlap.
+   ------------------------------------------------------------------
+   v4.1 - SLOT EDIT ACTUALLY SAVES NOW
+
+   PG_SLOT (the page id slot_sync() gates on) was defined as 4, which
+   is CALIBRATE - SLOT EDIT is page 3. slot_sync() only ever runs
+   "if(m_page == PG_SLOT)", so with the wrong id it silently did
+   nothing the entire time you were on the real SLOT EDIT page: your
+   PRE 1 / PRE 2 / CANCEL 1-4 / SPIN / FINISH edits changed the number
+   on screen (that's just oval[]) but never touched ts_slot[], so
+   firing SLOTA-D always played whatever ts_slot[] already held, and
+   SAVE ALL / CIRCLE-to-exit wrote that same untouched data back out.
+   Selecting a different slot in EDIT SLOT didn't reload its fields
+   either, for the same reason. One-line fix: PG_SLOT = 3.
+
+   Also corrected O_SL_CAN3's default (ODEF) to YY, matching SLOTDEF
+   A's actual third cancel - it had drifted to NONE, which only ever
+   showed up if you pressed TRIANGLE to reset that one line.
+   ------------------------------------------------------------------
+   v4.0 - SNIPER ONLY, AIM PRECISION REBUILT, FOUR CANCELS
+
+   Every option that wasn't sniping or trickshotting is gone: SNAP
+   AIM, SCOPE BAIT, SEMI AUTO (rapid fire + anti-recoil) and HAIR
+   TRIGGER are deleted outright, not just hidden. That's 15 pages
+   down to 12, and every remaining page earns its place.
+
+   AIM ASSIST is not the same feature anymore. CIRCLE / PULSE /
+   STRAFE were stick-wiggle patterns injected on top of your real
+   input regardless of whether you were also moving it - which is
+   what "tweaking" on small corrections actually was. It's replaced
+   by three things that shape YOUR input instead of fighting it:
+     CURVE   - precision near centre, speed further out
+     SMOOTH  - low-pass filter that kills hand tremor / micro-jitter
+     BREATH LINK - both tighten automatically while breath is held
+   plus an optional, small, heavily-suppressed MICRO NUDGE for
+   anyone who still wants a magnetism-style pull - off by default.
+
+   SLOT EDIT goes to FOUR cancel stages (was three), because there
+   was never a real reason it should have had fewer cancels than
+   pre-moves and finishers had headroom for. To make room without
+   breaking the two-pvar / 3-bit-per-field save packing, FINISH
+   drops from two fields to one - with a new composite "PR+MEL"
+   value so a PRONE-then-MELEE ending (MONSTR, DRPMEL) still works
+   in a single field. Every existing macro re-expresses cleanly in
+   the new 8-field shape: 2 PRE, 4 CANCEL, 1 SPIN, 1 FINISH.
+
+   Pages reordered: AIM ASSIST stays 1, then TRICKSHOT (2), TS
+   TIMING (3), SLOT EDIT (4), TS BINDS (5), TS BINDS+ (6) - the
+   sequencer is now front and centre instead of buried on page 9.
+   TURBO MELEE moved from the deleted TRIGGERS page into MOVEMENT,
+   which otherwise keeps everything it had.
+
+   OLED: boot and idle no longer print "SCOP'D" or draw the rule
+   line under it - idle is eyes only now, always, no more SCOPE /
+   BINDS / CYCLE views. That runner-simulation scene, the bind
+   preview screen and their support code are gone along with the
+   IDLE VIEW option.
+
+   BREAKING: this is enough of a structural change to the save
+   format (new fields, deleted fields, different slot packing) that
+   trying to migrate every old value field-by-field was more risk
+   than it was worth getting quietly wrong. v4.0 resets ALL saved
+   settings on first load, once - not just the four custom slots as
+   past layout changes have done. Re-tune TS TIMING and re-bind your
+   directions after the first boot on this version.
+   ------------------------------------------------------------------
+   v3.2 - AIM ASSIST STOPPED FIGHTING SMALL CORRECTIONS
+
+   The assist offset (CIRCLE/PULSE/STRAFE) was being added straight on
+   top of the real right-stick value with no regard for whether the
+   player was also moving it. A full-power assist vector stacked on a
+   tiny manual nudge is what "tweaking" on small aim adjustments was -
+   the offset dominated the input instead of assisting it. Superseded
+   by the v4.0 aim precision rebuild above.
+   ------------------------------------------------------------------
+   v3.1 - EIGHT FIELDS
+
+   v3.0 gave a trickshot four named sections, which fixed the flow but
+   allowed exactly ONE cancel. Long shots need more: a running jump
+   buys close to a second of airtime and you want two or three cancels
+   inside it, spaced differently from the taps inside each one.
+
+   So a trickshot is eight fields now:
+
+       PRE 1     PRE 2     CANCEL 1  CANCEL 2
+       CANCEL 3  SPIN      FINISH 1  FINISH 2
+
+   PRE 2 exists mainly for SPRINT + JUMP. Sprint deliberately stays
+   held past the point the jump fires, so the jump goes off while you
+   are still running - a running jump, which is the higher, longer one
+   with room for the extra cancels.
+
+   And GAP split in two. GAP is the rhythm INSIDE one cancel; STAGE is
+   the rest between one cancel and the next. One number could not
+   express "tight YY, loose spacing between cancels", which is what a
+   multi-cancel shot actually needs.
+
+   ------------------------------------------------------------------
+   v3.0 - SECTIONED TRICKSHOTS
+
+   v2 made the spin parallel but still laid the button presses end to
+   end, and it stored a slot as eight loose "steps" - so a jump shot
+   was jump, wait, swap, wait, swap, and nothing overlapped except the
+   stick. That is what "not smooth" was.
+
+   v3 gives every trickshot four named sections that deliberately
+   overlap in time:
+
+       PRE      jump / dive / swap-out / prone / crouch / sprint
+       CANCEL   YY / YYY / YYYY / reload / axe / melee / tac
+       SPIN     180 .. 1080, off one calibrated SPIN 360ms
+       FINISH   prone / melee / swap / crouch / jump / reload
+
+   CANCEL starts PRE x10 INTO the pre-move rather than after it, so
+   the YY lands while you are still coming off the jump. FINISH fires
+   FIN x10 after whichever of CANCEL and SPIN ends last. The library
+   macros are just named presets over those four fields (MACDEF[]),
+   and the four custom slots compose the same four fields by hand.
+
+   The spin also has an envelope now - whip out, carry, settle - so it
+   stops looking like a switch. SPIN RAMP sets the depth, and the
+   window is lengthened by exactly the area the envelope gives up, so
+   the rotation stays calibrated at every setting.
+
+   NOTHING TOUCHES L2 OR R2. No auto-scope, no auto-fire. The macro
+   choreographs the movement and the cancels; you scope and you shoot.
+
+   Every gap is tunable on TS TIMING - see the README.
+   ------------------------------------------------------------------
+   GPC NOTES: no local variables - all working vars are top level,
+   prefixed by owner. Combos take set_val/wait only, no branching,
+   which is exactly why the sequencer lives in a function instead.
+   print() takes a data-section address, not a literal; no %d.
+
+   SCREEN BUDGET (128 x 64, small font 7px wide / 8px tall):
+     header y 0..11 | rows y 15,25,35,45,55 | labels x 3 (10 chars)
+     values x 76 (6 chars) | scrollbar x 121..125
+   ================================================================== */
+
+
+/* ---------------- BUTTON LAYOUT (edit me) ---------------- */
+define BTN_FIRE    = PS4_R2;
+define BTN_ADS     = PS4_L2;
+define BTN_MELEE   = PS4_R3;
+define BTN_BREATH  = PS4_L3;     /* sprint, and hold-breath while scoped */
+define BTN_JUMP    = PS4_CROSS;
+define BTN_CROUCH  = PS4_CIRCLE; /* tap = crouch, hold = prone */
+define BTN_RELOAD  = PS4_SQUARE;
+define BTN_SWAP    = PS4_TRIANGLE;
+define BTN_MENU    = PS4_OPTIONS;
+define BTN_MASTER  = PS4_SHARE;
+define BTN_TAC     = PS4_L1;
+define BTN_LETHAL  = PS4_R1;     /* combat axe for the AXE cancel */
+
+define STK_RX = PS4_RX;
+define STK_RY = PS4_RY;
+define STK_LX = PS4_LX;
+define STK_LY = PS4_LY;
+
+/* ---------------- MENU NAVIGATION ---------------- */
+define NAV_UP    = PS4_UP;
+define NAV_DOWN  = PS4_DOWN;
+define NAV_LEFT  = PS4_LEFT;
+define NAV_RIGHT = PS4_RIGHT;
+define NAV_PGL   = PS4_L1;
+define NAV_PGR   = PS4_R1;
+define NAV_OK    = PS4_CROSS;
+define NAV_DEF   = PS4_TRIANGLE;
+define NAV_EXIT  = PS4_CIRCLE;
+
+/* ---------------- OPTION IDs (also the LBL[] index) ---------------- */
+define O_AA_CURVE   = 0;      /* p1  AIM ASSIST */
+define O_AA_SMOOTH  = 1;
+define O_AA_BLINK   = 2;
+define O_AA_NUDGE   = 3;
+define O_AA_NPWR    = 4;
+
+define O_TS_ON      = 5;      /* p2  TRICKSHOT */
+define O_TS_MOD     = 6;
+define O_TS_DIR     = 7;
+define O_TS_SPIN    = 8;
+define O_TS_RAMP    = 9;      /* whip-and-settle envelope depth */
+define O_TS_ABORT   = 10;     /* hand the stick back when you scope */
+define O_TS_LOOP    = 11;     /* hold the direction to repeat */
+
+define O_TAP        = 12;     /* p3  TS TIMING */
+define O_GAP        = 13;     /* between taps INSIDE one cancel      */
+define O_STAGE      = 14;     /* between one cancel and the next     */
+define O_LEAD       = 15;
+define O_PRE        = 16;     /* pre-move -> cancel overlap          */
+define O_FIN        = 17;     /* (cancel|spin) end -> finish, and
+                                 within a composite finish            */
+define O_TAIL       = 18;
+
+/* p4  SLOT EDIT - these EIGHT must stay consecutive and in field
+   order; slot_sync() and ts_load() both walk them as a block. */
+define O_SLOT_SEL   = 19;
+define O_SL_PRE1    = 20;
+define O_SL_PRE2    = 21;
+define O_SL_CAN1    = 22;
+define O_SL_CAN2    = 23;
+define O_SL_CAN3    = 24;
+define O_SL_CAN4    = 25;
+define O_SL_SPIN    = 26;
+define O_SL_FIN     = 27;
+
+/* p5  CALIBRATE - the spin/timing trainer. CAL TEST runs the chosen
+   reference macro and starts a measurement window; CAL RESULT is what
+   you tell it you actually got, and CAL APPLY solves for the corrected
+   SPIN 360ms from those two numbers. */
+define O_CAL_REF    = 28;
+define O_CAL_TEST   = 29;
+define O_CAL_GOT    = 30;
+define O_CAL_APPLY  = 31;
+define O_CAL_GAP    = 32;
+
+define O_BIND_U     = 33;     /* p6  TS BINDS */
+define O_BIND_D     = 34;
+define O_BIND_L     = 35;
+define O_BIND_R     = 36;
+
+define O_MBIND_U    = 37;     /* p7  TS BINDS+ (modifier held) */
+define O_MBIND_D    = 38;
+define O_MBIND_L    = 39;
+define O_MBIND_R    = 40;
+
+define O_BREATH     = 41;     /* p8  BREATH */
+define O_BR_DLY     = 42;
+define O_BR_HOLD    = 43;
+define O_BR_REST    = 44;
+
+define O_QS_ON      = 45;     /* p9  QUICKSCOPE */
+define O_QS_DLY     = 46;
+define O_QS_HOLD    = 47;
+define O_RESCOPE    = 48;
+define O_RESC_DLY   = 49;
+
+define O_BOLT_ON    = 50;     /* p10 BOLT WORK */
+define O_BOLT_DLY   = 51;
+define O_RELCAN     = 52;
+
+define O_DROP       = 53;     /* p11 MOVEMENT */
+define O_JUMPS      = 54;
+define O_SPRINT     = 55;
+define O_YYCAN      = 56;
+define O_DIVE       = 57;
+define O_MELEE      = 58;     /* turbo melee, moved off the deleted TRIGGERS page */
+
+define O_ANIM       = 59;     /* p12 DISPLAY */
+define O_EYE_LOOK   = 60;
+define O_TEAR       = 61;
+define O_TIMELINE   = 62;
+define O_RUMBLE     = 63;
+
+define O_PRESET     = 64;     /* p13 SYSTEM */
+define O_APPLY      = 65;
+define O_SAVE       = 66;
+define O_RESET      = 67;
+define O_TS_AUTO    = 68;     /* loads the tested TS TIMING baseline in one press */
+
+define O_SE_ON      = 69;     /* p14 STEAL EMBLEM */
+define O_SE_TRIG    = 70;
+define O_SE_TAP     = 71;
+define O_SE_GAP     = 72;
+define O_SE_XDN     = 73;     /* extra DOWN presses tacked onto the base 2 */
+define O_SE_TEST    = 74;
+
+define OPT_N    = 75;
+define PAGE_N   = 14;
+define PG_SLOT  = 3;          /* the slot-editing page - PGN[3] = "SLOT EDIT".
+                                  Was 4 (= "CALIBRATE") in v10: slot_sync()
+                                  gates on m_page == PG_SLOT, so with the
+                                  wrong page id it NEVER ran while you were
+                                  actually on SLOT EDIT. That's why editing
+                                  PRE/CANCEL/SPIN/FINISH on a custom slot
+                                  never wrote back to ts_slot[] - the fields
+                                  on screen were live, but nothing behind
+                                  them ever changed, so SAVE ALL / CIRCLE
+                                  always wrote back the untouched original
+                                  slot data. */
+/* A trickshot is EIGHT fields. Order is fixed and shared by MACDEF[],
+   SLOTDEF[], ts_slot[], st[] and the SLOT EDIT lines:
+     0 PRE 1   1 PRE 2   2 CANCEL 1   3 CANCEL 2
+     4 CANCEL 3   5 CANCEL 4   6 SPIN   7 FINISH
+   FINISH can be a composite value (PR+MEL) - see V_FIN[] - so a
+   two-action ending still fits the one field. */
+define SL_STRIDE = 8;
+define N_MACRO  = 45;         /* 41 library + 4 slots */
+define MAGIC    = 94;         /* save format tag - bump when a layout changes */
+
+/* ---------------- VALUE TYPES ---------------- */
+define T_NUM     = 0;
+define T_ONOFF   = 1;
+define T_BREATH  = 5;
+define T_TRIG    = 6;
+define T_TSMOD   = 7;
+define T_SPINDIR = 8;
+define T_MACRO   = 10;
+define T_PRE     = 11;
+define T_CAN     = 12;
+define T_SPINAMT = 13;
+define T_FIN     = 14;
+define T_SLOT    = 15;
+define T_PRESET  = 16;
+define T_ACT     = 17;
+define T_CALREF  = 18;
+define T_CALGOT  = 19;
+define T_SETRIG  = 20;
+
+
+/* ---------------- ASCII ---------------- */
+define CH_ZERO  = 48;
+define CH_MINUS = 45;
+define CH_SLASH = 47;
+
+
+/* ==================================================================
+   DATA SECTION
+   ================================================================== */
+const string PGN[] = {
+    "AIM ASSIST", "TRICKSHOT", "TS TIMING", "SLOT EDIT",
+    "CALIBRATE",  "TS BINDS",  "TS BINDS+", "BREATH",
+    "QUICKSCOPE", "BOLT WORK", "MOVEMENT",  "DISPLAY",
+    "SYSTEM",     "STEAL EMBLEM"
+};
+
+const string V_SETRIG[]  = { "OFF", "L3", "R3", "L1", "R1" };
+
+const string V_ONOFF[]   = { "OFF", "ON" };
+const string V_BREATH[]  = { "OFF", "ALWAYS", "SMART", "DELAY" };
+const string V_TRIG[]    = { "OFF", "FIRE", "ADS", "BOTH" };
+const string V_TSMOD[]   = { "NONE", "L3", "SHARE", "L1" };
+const string V_SPINDIR[] = { "RIGHT", "LEFT", "AUTO" };
+
+/* Every macro really is a named (PRE, CANCEL, SPIN, FINISH) combination -
+   the library below is nothing but presets over MACDEF[], and the four
+   slots compose the same eight fields by hand. */
+const string V_MACRO[]   = { "OFF",    "180",    "360",    "540",
+                             "720",    "900",    "1080",   "YY180",
+                             "YY360",  "YY540",  "YY720",  "YY1080",
+                             "YYY360", "YYY720", "YY2360", "YY2720",
+                             "JMP360", "JMP720", "JMPYY",  "JMPYY2",
+                             "RUNJMP", "RUN720", "DRP360", "DRPYY",
+                             "DRPMEL", "DIV360", "DIV720", "DIVYY",
+                             "TEMPER", "TEMPR2", "AXE360", "AXEYY2",
+                             "RLD360", "RLDAXE", "MEL360", "BARREL",
+                             "MONSTR", "QUADCAN","YY3360", "YY3720",
+                             "RUN1080",
+                             "SLOTA",  "SLOTB",  "SLOTC",  "SLOTD" };
+
+const string V_PRE[]     = { "NONE", "JUMP",   "DIVE", "SWAP",
+                             "PRONE","CROUCH", "SPRINT" };
+const string V_CAN[]     = { "NONE", "YY",  "YYY",   "YYYY",
+                             "RELOAD","AXE","MELEE", "TAC" };
+const string V_FIN[]     = { "NONE", "PRONE", "MELEE", "SWAP",
+                             "CROUCH","JUMP", "RELOAD","PR+MEL" };
+const string V_SPINAMT[] = { "NONE", "180", "360", "540", "720", "900", "1080" };
+const string V_SLOT[]    = { "A", "B", "C", "D" };
+
+/* CAL REF: which pure spin to fire as the reference. Degrees live in
+   CALDEG[] alongside, so the label and the number cannot drift. */
+const string V_CALREF[]  = { "360", "720", "1080" };
+const int16  CALDEG[]    = { 360, 720, 1080 };
+
+/* CAL RESULT: where you ACTUALLY ended up, as a fraction of a full
+   turn short or long. Deliberately coarse - you are eyeballing a
+   landmark, not reading a protractor, and finer options would only
+   invite false precision. */
+const string V_CALGOT[]  = { "SPOT ON",  "-1/8 SHRT", "-1/4 SHRT",
+                             "-1/2 SHRT","+1/8 LONG", "+1/4 LONG",
+                             "+1/2 LONG" };
+const int16  CALERR[]    = { 0, -45, -90, -180, 45, 90, 180 };
+const string V_PRESET[]  = { "CUSTOM", "DSR-50", "BALLST", "SVU-AS",
+                             "XPR-50", "QSRUSH", "TRICK" };
+
+const string MSG[]   = { "RESET", "SAVED", "PRESET", "DISARM", "ARMED" };
+const string LANEL[] = { "SPN", "PRE", "CAN", "FIN" };
+const string T_MS[]  = { "ms" };
+
+const string T_VER[]   = { "v4.3  ARMING" };
+const string T_OFF[]   = { "MODS OFF" };
+const string T_REARM[] = { "L2+SHARE = ARM" };
+const string T_GO[]    = { ">> GO" };
+const string T_CALA[]  = { "FIRE THE REF SHOT" };
+const string T_CALB[]  = { "FACE A LANDMARK" };
+const string T_CALC[]  = { "NEW SPIN 360ms" };
+const string T_CALD[]  = { "NO CHANGE NEEDED" };
+const string T_CALE[]  = { "OUT OF RANGE" };
+
+/* Option metadata as DATA instead of reg() calls. Index = option ID. */
+
+const uint8 OMIN[] = {
+       0,    0,    0,    0,    0,    0,    0,    0,   20,    0,    0,    0,    8,    8,    0,    0,
+       0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+       0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    5,    0,    0,    5,    2,
+       0,    5,    0,    5,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+       0,    0,    0,    0,    0,    0,    0,   10,   10,    0,    0
+};
+const uint8 OMAX[] = {
+      10,   10,    1,    1,    6,    1,    3,    2,  120,  100,    3,    1,   90,   90,   60,   40,
+      60,   60,   40,    3,    6,    6,    7,    7,    7,    7,    6,    7,    2,    0,    6,    0,
+       0,   44,   44,   44,   44,   44,   44,   44,   44,    3,   50,   60,    1,    1,   60,   20,
+       1,   60,    1,   80,    1,    3,    3,    1,    1,    1,    1,    1,    1,    1,    1,    1,
+       6,    0,    0,    0,    0,    1,    4,  150,  250,    6,    0
+};
+const uint8 OSTP[] = {
+       1,    1,    1,    1,    1,    1,    1,    1,    1,    5,    1,    1,    2,    2,    1,    1,
+       1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    0,    1,    0,
+       0,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
+       1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
+       1,    0,    0,    0,    0,    1,    1,    2,    5,    1,    0
+};
+const uint8 OTYP[] = {
+       0,    0,    1,    1,    0,    1,    7,    8,    0,    0,    6,    1,    0,    0,    0,    0,
+       0,    0,    0,   15,   11,   11,   12,   12,   12,   12,   13,   14,   18,   17,   19,   17,
+      17,   10,   10,   10,   10,   10,   10,   10,   10,    5,    0,    0,    1,    1,    0,    0,
+       1,    0,    1,    0,    1,    6,    6,    1,    1,    1,    1,    1,    1,    1,    1,    1,
+      16,   17,   17,   17,   17,    1,   20,    0,    0,    0,   17
+};
+const uint8 ODEF[] = {
+       4,    3,    1,    0,    3,    0,    1,    2,   60,   55,    2,    0,   28,   24,    7,    0,
+       8,    4,    6,    0,    1,    0,    1,    1,    1,    0,    2,    0,    0,    0,    0,    0,
+       0,    0,    0,    0,    0,    0,    0,    0,    0,    1,    8,   35,    1,    0,   22,    8,
+       0,   30,    0,   42,    0,    0,    0,    1,    0,    0,    0,    1,    1,    1,    0,    1,
+       0,    0,    0,    0,    0,    0,    0,   40,   70,    4,    0
+};
+
+const string LBL[] = {
+    "CURVE", "SMOOTH", "BREATH LNK", "MICRO NUDG", "NUDGE PWR", "ENABLE",
+    "MODIFIER", "SPIN DIR", "SPIN 360ms", "SPIN RAMP", "ABORT ON", "HOLD LOOP",
+    "TAP ms", "GAP ms", "STAGE x10", "LEAD x10", "PRE x10", "FIN x10",
+    "TAIL x10", "EDIT SLOT", "PRE 1", "PRE 2", "CANCEL 1", "CANCEL 2",
+    "CANCEL 3", "CANCEL 4", "SPIN", "FINISH", "REF SPIN", "FIRE TEST",
+    "RESULT", "APPLY FIX", "TUNE GAP", "D-PAD UP", "D-PAD DOWN", "D-PAD LEFT",
+    "D-PAD RGHT", "M+ UP", "M+ DOWN", "M+ LEFT", "M+ RIGHT", "MODE",
+    "DELAY x10", "MAX HOLD", "AUTO REST", "ENABLE", "QS DELAY", "FIRE HOLD",
+    "AUTO RESCP", "RESCP DLY", "BOLT CANCL", "BOLT DELAY", "RELOAD CAN", "DROP SHOT",
+    "JUMP SHOT", "AUTOSPRINT", "YY CANCEL", "DIVE HELP", "TURBO MELE", "EYE BLINK",
+    "EYE LOOK", "TEAR", "TIMELINE", "RUMBLE", "PRESET", "APPLY",
+    "SAVE ALL", "RESET ALL", "TS AUTO", "ENABLE", "TRIGGER", "TAP ms",
+    "GAP ms", "XTRA DOWN", "FIRE TEST"
+};
+
+
+/* THE LIBRARY. Eight bytes per macro:
+       PRE1  PRE2  CAN1  CAN2  CAN3  CAN4  SPIN  FIN
+   Index = the V_MACRO[] index, so a name and its behaviour can never
+   drift apart. Slots (41..44) read the same eight fields out of
+   ts_slot[] instead.
+
+   PRE  0 none 1 jump 2 dive 3 swap 4 prone 5 crouch 6 sprint
+   CAN  0 none 1 YY 2 YYY 3 YYYY 4 reload 5 axe 6 melee 7 tac
+   SPIN 0 none 1 180 2 360 3 540 4 720 5 900 6 1080
+   FIN  0 none 1 prone 2 melee 3 swap 4 crouch 5 jump 6 reload 7 prone+melee */
+
+const uint8 MACDEF[] = {
+    0, 0, 0, 0, 0, 0, 0, 0,   /*  0 OFF */
+    0, 0, 0, 0, 0, 0, 1, 0,   /*  1 180 */
+    0, 0, 0, 0, 0, 0, 2, 0,   /*  2 360 */
+    0, 0, 0, 0, 0, 0, 3, 0,   /*  3 540 */
+    0, 0, 0, 0, 0, 0, 4, 0,   /*  4 720 */
+    0, 0, 0, 0, 0, 0, 5, 0,   /*  5 900 */
+    0, 0, 0, 0, 0, 0, 6, 0,   /*  6 1080 */
+    0, 0, 1, 0, 0, 0, 1, 0,   /*  7 YY180 */
+    0, 0, 1, 0, 0, 0, 2, 0,   /*  8 YY360 */
+    0, 0, 1, 0, 0, 0, 3, 0,   /*  9 YY540 */
+    0, 0, 1, 0, 0, 0, 4, 0,   /* 10 YY720 */
+    0, 0, 1, 0, 0, 0, 6, 0,   /* 11 YY1080 */
+    0, 0, 2, 0, 0, 0, 2, 0,   /* 12 YYY360 */
+    0, 0, 2, 0, 0, 0, 4, 0,   /* 13 YYY720 */
+    0, 0, 1, 1, 0, 0, 2, 0,   /* 14 YY2360 */
+    0, 0, 1, 1, 0, 0, 4, 0,   /* 15 YY2720 */
+    1, 0, 0, 0, 0, 0, 2, 0,   /* 16 JMP360 */
+    1, 0, 0, 0, 0, 0, 4, 0,   /* 17 JMP720 */
+    1, 0, 1, 0, 0, 0, 2, 0,   /* 18 JMPYY */
+    1, 0, 1, 1, 0, 0, 2, 0,   /* 19 JMPYY2 */
+    6, 1, 1, 0, 0, 0, 2, 0,   /* 20 RUNJMP */
+    6, 1, 1, 1, 0, 0, 4, 0,   /* 21 RUN720 */
+    0, 0, 0, 0, 0, 0, 2, 1,   /* 22 DRP360 */
+    0, 0, 1, 0, 0, 0, 2, 1,   /* 23 DRPYY */
+    0, 0, 1, 0, 0, 0, 2, 7,   /* 24 DRPMEL */
+    2, 0, 0, 0, 0, 0, 2, 0,   /* 25 DIV360 */
+    2, 0, 0, 0, 0, 0, 4, 0,   /* 26 DIV720 */
+    2, 0, 1, 0, 0, 0, 2, 0,   /* 27 DIVYY */
+    1, 0, 1, 0, 0, 0, 2, 3,   /* 28 TEMPER */
+    1, 0, 1, 1, 0, 0, 2, 3,   /* 29 TEMPR2 */
+    0, 0, 5, 0, 0, 0, 2, 0,   /* 30 AXE360 */
+    0, 0, 5, 1, 0, 0, 3, 0,   /* 31 AXEYY2 */
+    0, 0, 4, 0, 0, 0, 2, 0,   /* 32 RLD360 */
+    0, 0, 4, 5, 0, 0, 2, 0,   /* 33 RLDAXE */
+    0, 0, 6, 0, 0, 0, 2, 0,   /* 34 MEL360 */
+    3, 0, 1, 0, 0, 0, 2, 0,   /* 35 BARREL */
+    6, 1, 4, 1, 1, 0, 6, 7,   /* 36 MONSTR */
+    0, 0, 1, 1, 1, 1, 2, 0,   /* 37 QUADCAN */
+    0, 0, 1, 1, 1, 0, 2, 0,   /* 38 YY3360 */
+    0, 0, 1, 1, 1, 0, 4, 0,   /* 39 YY3720 */
+    6, 1, 1, 1, 1, 0, 6, 0    /* 40 RUN1080 */
+};
+
+const uint8 SLOTDEF[] = {
+    1, 0, 1, 1, 1, 0, 2, 0,   /* A */
+    6, 1, 1, 1, 0, 0, 4, 0,   /* B */
+    0, 0, 5, 1, 1, 0, 2, 1,   /* C */
+    3, 0, 4, 1, 0, 0, 3, 3    /* D */
+};
+
+
+const uint8 PGFIRST[] = { 0, 5, 12, 19, 28, 33, 37, 41, 45, 50, 53, 59, 64, 69 };
+const uint8 PGCOUNT[] = { 5, 7, 7, 9, 5, 4, 4, 4, 5, 3, 6, 5, 5, 6 };
+
+/* 64-step sine, -100..100. Gives real polar maths: rings, rays,
+   sweeps and orbits at any angle instead of 4 canned positions. */
+const int8 SIN64[] = {
+       0,   10,   20,   29,   38,   47,   56,   63,
+      71,   77,   83,   88,   92,   96,   98,  100,
+     100,  100,   98,   96,   92,   88,   83,   77,
+      71,   63,   56,   47,   38,   29,   20,   10,
+       0,  -10,  -20,  -29,  -38,  -47,  -56,  -63,
+     -71,  -77,  -83,  -88,  -92,  -96,  -98, -100,
+    -100, -100,  -98,  -96,  -92,  -88,  -83,  -77,
+     -71,  -63,  -56,  -47,  -38,  -29,  -20,  -10
+};
+
+
+/* ==================================================================
+   OPTION TABLE
+   ================================================================== */
+int oval[75];
+int odef[75];
+int omin[75];
+int omax[75];
+int ostp[75];
+int otyp[75];
+
+int pg_first[14];
+int pg_count[14];
+
+/* four user-composed trickshots, 4 components each */
+int ts_slot[32];
+
+
+/* ==================================================================
+   STATE
+   ================================================================== */
+int menu_open  = 0;
+int m_page     = 0;
+int m_item     = 0;
+int rep_t      = 0;
+int tick       = 0;
+int master_off = 0;
+
+int boot_t   = 0;
+int oled_t   = 0;
+int anim     = 0;
+int notif_t  = 0;
+int notif_id = 0;
+
+int ads_now  = 0;
+int fire_now = 0;
+int ads_t    = 0;
+int br_t     = 0;
+int br_want  = 0;
+
+/* ---- AIM PRECISION: response curve + jitter smoothing + optional
+   micro nudge. Curve and smooth reshape the player's OWN stick value
+   (they never fight it); the nudge is a small, heavily-suppressed
+   magnetism-style offset, off by default. ---- */
+int aa_curve = 0;
+int aa_smth  = 0;
+int aa_rrx, aa_rry;             /* raw stick read this frame */
+int aa_frx = 0, aa_fry = 0;     /* low-pass filtered          */
+int aa_mx, aa_my;                /* filtered magnitude         */
+int aa_cx, aa_cy;                /* quadratic component        */
+int aa_bx, aa_by;                /* curved result               */
+
+int aa_on  = 0;
+int aa_x   = 0;
+int aa_y   = 0;
+int aa_pw  = 0;
+define AA_NUDGE_SPEED = 10;      /* ms per step of the nudge pattern */
+
+/* manual-input suppression on the nudge: fades it out as the
+   player's own stick deflection grows, so a small correction never
+   gets fought by the nudge stacked on top of it */
+define AA_MANUAL_MAX = 20;   /* |RX|+|RY| beyond this = nudge fully off */
+int aa_mrx  = 0;
+int aa_mry  = 0;
+int aa_mag  = 0;
+int aa_scl  = 100;
+int aa_ex   = 0;
+int aa_ey   = 0;
+
+/* ---- calibration trainer ---- */
+int cal_t    = 0;    /* ms the result banner stays up      */
+int cal_msg  = 0;    /* 0 none 1 fired 2 applied 3 no-change 4 out of range */
+int cal_new  = 0;    /* the solved SPIN 360ms                */
+int cal_want, cal_real, cal_prev;
+
+int qs_d   = 220;
+int qs_h   = 80;
+int resc_d = 300;
+int bolt_d = 300;
+
+/* ---- emblem-steal macro: menu-navigation button sequence, not a
+   gameplay mod - lives on its own page so it can't be mixed up with
+   the trickshot binds. TAP/GAP are tunable because menu response
+   time varies a lot more than in-game input does. ---- */
+int se_btn = -1;
+int se_tap = 40;
+int se_gap = 70;
+/* combos can't loop or branch, and XTRA DOWN needs a variable number
+   of repeats, so the sequence is driven tick-by-tick instead of as a
+   combo - se_step walks the sequence, se_phase alternates hold/gap. */
+int se_live  = 0;
+int se_step  = 0;
+int se_phase = 0;     /* 0 = holding the press, 1 = releasing/gap */
+int se_t     = 0;
+int se_total = 0;
+int se_cur   = -1;
+
+/* ---- trickshot sequencer ---- */
+/* Worst case: 2 pre-moves x 2 windows, 4 cancels x (trigger + 4 taps),
+   1 spin, 1 finisher (2 windows for the PR+MEL composite) = 26. */
+define NWIN      = 28;
+define PRONE_MS  = 340;   /* CROUCH must be HELD this long to read as prone */
+define DIVE_RUN  = 200;   /* sprint floor before a dive or run-up will commit */
+define RUN_HOLD  = 140;   /* sprint stays held this long past the run-up, so a
+                             PRE 2 jump goes off while still sprinting      */
+define RAMP_LOSS = 138;   /* per-mille area the full spin envelope gives up */
+define LANE_SPIN = 0;
+define LANE_PRE  = 1;
+define LANE_CAN  = 2;
+define LANE_FIN  = 3;
+
+int w_btn[28];
+int w_on[28];
+int w_off[28];
+int w_lane[28];       /* which section owns the window - for the timeline */
+int ts_live = 0;      /* 1 while a trickshot is playing   */
+int ts_t    = 0;      /* ms elapsed inside the sequence   */
+int ts_end  = 0;      /* total length including TAIL      */
+int ts_span = 0;      /* length of the choreography alone */
+int ts_pow  = 100;    /* signed spin deflection           */
+int ts_mod  = 0;
+int ts_mac  = 0;      /* what is playing, so HOLD LOOP can replay it */
+int ts_hint = 0;
+int ts_btn  = -1;
+
+/* build-time scratch */
+int bd_t, bd_gap, bd_tap, bd_pre, bd_spin, bd_i, bd_max, bd_n, bd_a;
+int bd_cs, bd_ce, bd_ct, bd_area, bd_pe, bd_stage, bd_s;
+int sp_p, sp_e, sp_d;
+int st[8];          /* PRE1 PRE2 CAN1 CAN2 CAN3 CAN4 SPIN FIN */
+
+/* ---- per-function working vars ---- */
+int mn_id;
+int aj_v;
+int ld_i;
+int sv_a, sv_b;
+int lo_c;
+int lo_mg;
+int sl_last = -1;
+int sl_base = 0;
+int bt_r, bt_g, bt_x, bt_w;
+int id_r, id_s, id_i, id_sx, id_sy, id_amp, id_v;
+int dm_i, dm_y, dm_id, dm_base, dm_n, dm_c, dm_scroll;
+int dv_t;
+int pp_sel;
+
+/* ---- OLED scene engine ---- */
+int i_ring;
+int sc_x, sc_v;
+/* ---- eye / tear geometry. One place to move the whole face. ---- */
+define EYE_LX  = 34;      /* left eye centre x                         */
+define EYE_RX  = 94;      /* right eye centre x (pair is centred on 64) */
+define EYE_BY  = 10;      /* brow baseline y at yoff 0                  */
+define EYE_EY  = 30;      /* eye corner-line y at yoff 0                */
+define EYE_W   = 16;      /* eye half-width -> 33px wide               */
+define EYE_W2  = 256;     /* EYE_W * EYE_W, precomputed                */
+define BROW_W  = 16;      /* brow half-width                          */
+define BROW_W2 = 256;
+define EYE_AP  = 10;      /* upper-lid aperture when fully open       */
+define TEAR_X  = 110;     /* streak runs off the right eye's outer corner */
+
+define BLINK_PERIOD = 100;   /* ~3.3s between blinks (anim ticks at 33ms) */
+define TEAR_CYCLE   = 170;   /* ~5.6s between idle tears                  */
+
+/* one blink = six frames of aperture, then back to EYE_AP. Closing is
+   faster than opening, which is what makes it read as a real blink
+   instead of a dropped frame. */
+const uint8 BLINKSEQ[] = { 7, 2, 0, 0, 3, 7 };
+
+int ty_i, ty_x;                   /* tear streak scratch */
+int ey_ap, ey_ph;                 /* aperture + blink phase */
+int ey_i, ey_q, ey_y, ey_py;      /* lid/brow plotting scratch */
+int ey_dx, ey_dy, ey_ir;          /* iris drift offset + radius */
+int ey_v, ey_th, ey_x, ey_t0;     /* brow wedge scratch */
+int tr_t = 0, tr_ph, tr_y;        /* idle tear cycle */
+int tl_t = 0, tl_i, tl_x0, tl_x1, tl_y;   /* timeline overlay */
+
+int np_v, np_n, np_i, np_j, np_neg;
+int np_dig[6];
+
+
+/* ==================================================================
+   INIT
+   ================================================================== */
+init {
+    vm_tctrl(-8);
+    build_table();
+    build_pages();
+    load_defaults();
+    load_all();
+    boot_t = 0;
+    anim   = 0;
+}
+
+
+/* ==================================================================
+   MAIN
+   ================================================================== */
+main {
+    tick = get_rtime();
+
+    aa_pw   = oval[O_AA_NPWR];
+    qs_d    = oval[O_QS_DLY]   * 10;
+    qs_h    = oval[O_QS_HOLD]  * 10;
+    resc_d  = oval[O_RESC_DLY] * 10;
+    bolt_d  = oval[O_BOLT_DLY] * 10;
+
+    if(get_val(BTN_ADS) > 40) {
+        set_val(BTN_MENU, 0);
+        set_val(BTN_MASTER, 0);
+        if(event_press(BTN_MENU)) {
+            if(menu_open) {
+                save_all();
+                menu_open = 0;
+                flash(1);
+            } else {
+                menu_open = 1;
+                m_item = 0;
+                sl_last = -1;
+                stop_all();
+            }
+            buzz();
+        }
+        if(event_press(BTN_MASTER)) {
+            master_off = !master_off;
+            stop_all();
+            if(master_off) flash(3);
+            else flash(4);
+            buzz();
+        }
+    }
+
+    if(menu_open) {
+        menu_logic();
+        block_all();
+    } else {
+        if(!master_off) run_mods();
+    }
+
+    oled_t = oled_t + tick;
+    if(oled_t >= 33) {
+        oled_t = 0;
+        anim = anim + 1;
+        if(anim >= 33600) anim = 0;   /* 3*64, 7*64, 8 and 100 all divide it,
+                                         so no phase jump on rollover */
+        if(boot_t < 3600) {
+            boot_t = boot_t + 33;
+            draw_boot();
+        } else if(menu_open) {
+            draw_menu();
+        } else if(notif_t > 0) {
+            draw_notif();
+        } else {
+            draw_idle();
+        }
+    }
+    if(notif_t > 0) notif_t = notif_t - tick;
+    if(tl_t    > 0) tl_t    = tl_t    - tick;
+    if(cal_t   > 0) cal_t   = cal_t   - tick;
+}
+
+
+/* ==================================================================
+   MOD ENGINE
+   ================================================================== */
+function run_mods() {
+    ads_now  = 0;
+    fire_now = 0;
+    if(get_val(BTN_ADS)  > 40) ads_now  = 1;
+    if(get_val(BTN_FIRE) > 40) fire_now = 1;
+
+    if(ads_now) ads_t = ads_t + tick;
+    else ads_t = 0;
+
+    trickshot();
+    ts_run();
+    steal_emblem();
+    se_run();
+
+    /* ---------- AUTO HOLD BREATH ---------- */
+    br_want = 0;
+    if(oval[O_BREATH] > 0 && ads_now) {
+        if(oval[O_BREATH] == 1) br_want = 1;
+        if(oval[O_BREATH] == 2 && get_val(BTN_FIRE) > 5) br_want = 1;
+        if(oval[O_BREATH] == 3 && ads_t >= (oval[O_BR_DLY] * 10)) br_want = 1;
+    }
+    if(br_want) {
+        if(oval[O_BR_REST]) {
+            br_t = br_t + tick;
+            if(br_t <= (oval[O_BR_HOLD] * 100)) set_val(BTN_BREATH, 100);
+            else if(br_t > ((oval[O_BR_HOLD] * 100) + 600)) br_t = 0;
+        } else {
+            set_val(BTN_BREATH, 100);
+        }
+    } else {
+        br_t = 0;
+    }
+
+    aim_precision();
+
+    /* ---------- QUICKSCOPE ---------- */
+    if(oval[O_QS_ON] && event_press(BTN_ADS)) combo_run(QuickScope);
+
+    /* ---------- POST-SHOT ---------- */
+    if(ads_now && event_press(BTN_FIRE)) {
+        if(oval[O_RESCOPE]) combo_run(AutoRescope);
+        if(oval[O_BOLT_ON]) combo_run(BoltCancel);
+    }
+
+    /* ---------- MOVEMENT (suspended during a trickshot) ---------- */
+    if(!ts_live) {
+        if(shot_trig(oval[O_DROP]))  combo_run(DropShot);
+        if(shot_hold(oval[O_JUMPS])) combo_run(JumpShot);
+        if(oval[O_SPRINT] && !ads_now && get_val(STK_LY) < -70) combo_run(AutoSprint);
+        if(oval[O_YYCAN] && get_val(BTN_SWAP)) combo_run(YYCancel);
+        if(oval[O_DIVE] && !ads_now && get_val(BTN_CROUCH) && get_val(STK_LY) < -70)
+            combo_run(DiveAssist);
+    }
+
+    /* TurboMelee tests get_val, which sees the macro's own MELEE
+       window, so a MEL360 cancel would retrigger turbo melee against
+       itself - both stay behind the ts_live fence. */
+    if(!ts_live) {
+        if(oval[O_RELCAN] && event_press(BTN_RELOAD)) combo_run(ReloadCancel);
+        if(oval[O_MELEE]  && get_val(BTN_MELEE))      combo_run(TurboMelee);
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   AIM PRECISION
+
+   This replaced the old CIRCLE / PULSE / STRAFE "aim assist". Those
+   injected a fixed oscillating vector on top of the real stick value
+   whether or not the player was also moving it - which is what the
+   tweaking on small corrections actually was. They were also aimed at
+   a mechanic (keeping the game's native rotational assist "fed" with
+   stick motion) that is unreliable against bots in the first place.
+
+   Three things replace it, and the first two shape the player's OWN
+   input rather than adding a foreign one, so they can never fight it:
+
+     SMOOTH  a low-pass filter. Each frame the working value moves a
+             fraction of the way toward the raw stick instead of
+             snapping to it, so hand tremor and controller noise get
+             averaged out while real movement passes through with a
+             tiny lag. This is the steadying aid for long holds.
+
+     CURVE   response shaping. The filtered value is blended toward
+             its own square, which stretches the low end (fine
+             control near centre, exactly where scoped micro-
+             adjustments live) and leaves the top end at full speed
+             for flicks. Sign is preserved; full deflection still
+             maps to full deflection, so nothing is lost - only the
+             distribution between centre and edge changes.
+
+     BREATH LINK   while BTN_BREATH is held (the moment you are
+             deliberately trying to be still) both effects tighten
+             automatically - more smoothing, more curve.
+
+   MICRO NUDGE is the only thing here that adds anything, and it is
+   off by default. It is a small orbiting offset (2..6 units, versus
+   the 9..13 the old modes used) and it is scaled to zero as the
+   player's own deflection grows, so it only ever acts on a stick
+   that is close to still.
+   ================================================================== */
+function aim_precision() {
+    if(ts_live) return 0;           /* never fight the spin */
+
+    aa_curve = oval[O_AA_CURVE];
+    aa_smth  = oval[O_AA_SMOOTH];
+
+    /* BREATH LINK: tighten both while holding breath scoped */
+    if(oval[O_AA_BLINK] && ads_now && get_val(BTN_BREATH) > 40) {
+        aa_curve = aa_curve + 3;  if(aa_curve > 10) aa_curve = 10;
+        aa_smth  = aa_smth  + 3;  if(aa_smth  > 10) aa_smth  = 10;
+    }
+
+    aa_rrx = get_val(STK_RX);
+    aa_rry = get_val(STK_RY);
+
+    /* ---- SMOOTH: filtered = filtered + (raw - filtered) * w ----
+       w runs from 1/1 (off, follows the stick exactly) down to about
+       1/6 at full setting. Integer division truncates toward zero, so
+       a residual difference of a few units would stall forever - the
+       +-1 nudge below guarantees the filter always converges. */
+    if(aa_smth > 0) {
+        aa_frx = aa_frx + (((aa_rrx - aa_frx) * 10) / (10 + (aa_smth * 5)));
+        aa_fry = aa_fry + (((aa_rry - aa_fry) * 10) / (10 + (aa_smth * 5)));
+        if(aa_frx != aa_rrx) {
+            if(aa_rrx > aa_frx) aa_frx = aa_frx + 1;
+            else aa_frx = aa_frx - 1;
+        }
+        if(aa_fry != aa_rry) {
+            if(aa_rry > aa_fry) aa_fry = aa_fry + 1;
+            else aa_fry = aa_fry - 1;
+        }
+    } else {
+        aa_frx = aa_rrx;
+        aa_fry = aa_rry;
+    }
+
+    aa_bx = aa_frx;
+    aa_by = aa_fry;
+
+    /* ---- CURVE: blend linear toward squared, sign preserved ----
+       squared component = v*|v|/100, which is v at +-100 and much
+       smaller near zero. Blending k/10 of it in stretches the low end
+       without changing either endpoint. */
+    if(aa_curve > 0) {
+        aa_mx = aa_frx;  if(aa_mx < 0) aa_mx = 0 - aa_mx;
+        aa_my = aa_fry;  if(aa_my < 0) aa_my = 0 - aa_my;
+        aa_cx = (aa_frx * aa_mx) / 100;
+        aa_cy = (aa_fry * aa_my) / 100;
+        aa_bx = ((aa_frx * (10 - aa_curve)) + (aa_cx * aa_curve)) / 10;
+        aa_by = ((aa_fry * (10 - aa_curve)) + (aa_cy * aa_curve)) / 10;
+        /* Floor. Integer division rounds a small input to nothing at
+           the steeper settings (5 -> 0 at CURVE 9), which would be a
+           dead zone: you push the stick and the game sees nothing.
+           Any real deflection must survive as at least 1. */
+        if(aa_frx > 0 && aa_bx < 1) aa_bx =  1;
+        if(aa_frx < 0 && aa_bx > 0 - 1) aa_bx = 0 - 1;
+        if(aa_fry > 0 && aa_by < 1) aa_by =  1;
+        if(aa_fry < 0 && aa_by > 0 - 1) aa_by = 0 - 1;
+    }
+
+    /* ---- MICRO NUDGE: small, and suppressed by your own input ---- */
+    aa_ex = 0;
+    aa_ey = 0;
+    aa_on = 0;
+    if(oval[O_AA_NUDGE] && ads_now && aa_pw > 0) aa_on = 1;
+    if(aa_on) {
+        combo_run(AA_Nudge);
+        aa_mrx = aa_frx;  if(aa_mrx < 0) aa_mrx = 0 - aa_mrx;
+        aa_mry = aa_fry;  if(aa_mry < 0) aa_mry = 0 - aa_mry;
+        aa_mag = aa_mrx + aa_mry;
+        if(aa_mag > AA_MANUAL_MAX) aa_mag = AA_MANUAL_MAX;
+        aa_scl = 100 - ((aa_mag * 100) / AA_MANUAL_MAX);
+        aa_ex  = (aa_x * aa_scl) / 100;
+        aa_ey  = (aa_y * aa_scl) / 100;
+    } else {
+        combo_stop(AA_Nudge);
+        aa_x = 0;
+        aa_y = 0;
+    }
+
+    if(aa_bx != aa_rrx || aa_ex != 0) set_val(STK_RX, clampv(aa_bx + aa_ex));
+    if(aa_by != aa_rry || aa_ey != 0) set_val(STK_RY, clampv(aa_by + aa_ey));
+    return 0;
+}
+
+
+/* ==================================================================
+   TRICKSHOT - INPUT
+   ================================================================== */
+function trickshot() {
+    if(!oval[O_TS_ON]) return 0;
+
+    /* modifier selects the second bind set and is swallowed so it
+       cannot leak into the game. Never map this to a grenade button:
+       BO2 cooks lethals on hold. */
+    ts_mod = 0;
+    if(oval[O_TS_MOD] == 1 && get_val(BTN_BREATH)) ts_mod = 1;
+    if(oval[O_TS_MOD] == 2 && get_val(BTN_MASTER)) ts_mod = 1;
+    if(oval[O_TS_MOD] == 3 && get_val(BTN_TAC))    ts_mod = 1;
+    if(ts_mod) {
+        if(oval[O_TS_MOD] == 1) set_val(BTN_BREATH, 0);
+        if(oval[O_TS_MOD] == 2) set_val(BTN_MASTER, 0);
+        if(oval[O_TS_MOD] == 3) set_val(BTN_TAC, 0);
+    }
+
+    if(ts_mod) {
+        ts_check(oval[O_MBIND_U], NAV_UP,    0);
+        ts_check(oval[O_MBIND_D], NAV_DOWN,  0);
+        ts_check(oval[O_MBIND_L], NAV_LEFT,  1);
+        ts_check(oval[O_MBIND_R], NAV_RIGHT, 2);
+    } else {
+        ts_check(oval[O_BIND_U], NAV_UP,    0);
+        ts_check(oval[O_BIND_D], NAV_DOWN,  0);
+        ts_check(oval[O_BIND_L], NAV_LEFT,  1);
+        ts_check(oval[O_BIND_R], NAV_RIGHT, 2);
+    }
+    return 0;
+}
+
+/* A bound direction is swallowed; an unbound one passes through so
+   you keep scorestreaks on the directions you don't use.
+   Pressing a bound direction mid-sequence aborts it. */
+function ts_check(mac, btn, dhint) {
+    if(mac > 0) {
+        set_val(btn, 0);
+        if(event_press(btn)) {
+            if(ts_live) {
+                ts_live = 0;
+            } else {
+                ts_fire(mac, dhint, btn);
+                buzz();
+            }
+        }
+    }
+    return 0;
+}
+
+/* dhint: 1 = pressed LEFT, 2 = pressed RIGHT (used by SPIN DIR AUTO) */
+function ts_fire(mac, dhint, btn) {
+    ts_mac  = mac;
+    ts_hint = dhint;
+    ts_btn  = btn;
+
+    ts_pow = 100;
+    if(oval[O_TS_DIR] == 1) ts_pow = -100;
+    if(oval[O_TS_DIR] == 2) {
+        if(dhint == 1) ts_pow = -100;
+    }
+    ts_load(mac);
+    ts_build();
+    if(oval[O_TIMELINE]) tl_t = ts_end + 1400;
+    return 0;
+}
+
+/* st[] = the eight fields. Library macros read them out of MACDEF[];
+   slots read the same eight out of ts_slot[]. */
+function ts_load(mac) {
+    if(mac >= 41) {
+        sl_base = (mac - 41) * SL_STRIDE;
+        for(bd_i = 0; bd_i < 8; bd_i++) st[bd_i] = ts_slot[sl_base + bd_i];
+    } else {
+        sl_base = mac * 8;
+        for(bd_i = 0; bd_i < 8; bd_i++) st[bd_i] = MACDEF[sl_base + bd_i];
+    }
+    return 0;
+}
+
+/* ==================================================================
+   STEAL EMBLEM - a fixed button sequence for the Barracks emblem-
+   copy glitch, not a gameplay mod. X, Circle x3, X, X, Down x2, each
+   press held TAP ms with GAP ms between presses - both tunable,
+   because the menu's response window is far less forgiving than
+   anything in a match and needs to be walked in by feel.
+   ================================================================== */
+function steal_emblem() {
+    if(!oval[O_SE_ON]) return 0;
+
+    se_btn = -1;
+    if(oval[O_SE_TRIG] == 1) se_btn = BTN_BREATH;   /* L3 */
+    if(oval[O_SE_TRIG] == 2) se_btn = BTN_MELEE;    /* R3 */
+    if(oval[O_SE_TRIG] == 3) se_btn = BTN_TAC;      /* L1 */
+    if(oval[O_SE_TRIG] == 4) se_btn = BTN_LETHAL;   /* R1 */
+    if(se_btn < 0) return 0;
+
+    set_val(se_btn, 0);
+    if(event_press(se_btn) && !se_live) {
+        se_tap = oval[O_SE_TAP];
+        se_gap = oval[O_SE_GAP];
+        se_start();
+        buzz();
+    }
+    return 0;
+}
+
+/* X, Circle, Circle, Circle, X, X, then DOWN repeated (2 base +
+   XTRA DOWN extra - steps 6 and up are all DOWN, however many there
+   are), so the tail length is just se_total instead of a fixed
+   button list. */
+function se_seq_btn(step) {
+    if(step == 0) return PS4_CROSS;
+    if(step == 1) return PS4_CIRCLE;
+    if(step == 2) return PS4_CIRCLE;
+    if(step == 3) return PS4_CIRCLE;
+    if(step == 4) return PS4_CROSS;
+    if(step == 5) return PS4_CROSS;
+    return PS4_DOWN;
+    /* steps 6 .. se_total-1 are all DOWN - 2 base + XTRA DOWN extra */
+}
+
+function se_start() {
+    se_live  = 1;
+    se_step  = 0;
+    se_t     = 0;
+    se_phase = 0;
+    se_total = 8 + oval[O_SE_XDN];
+    return 0;
+}
+
+function se_run() {
+    if(!se_live) return 0;
+    se_t = se_t + tick;
+    se_cur = se_seq_btn(se_step);
+    if(se_phase == 0) {
+        set_val(se_cur, 100);
+        if(se_t >= se_tap) { se_t = 0; se_phase = 1; }
+    } else {
+        set_val(se_cur, 0);
+        if(se_t >= se_gap) {
+            se_t    = 0;
+            se_phase = 0;
+            se_step  = se_step + 1;
+            if(se_step >= se_total) se_live = 0;
+        }
+    }
+    return 0;
+}
+
+
+/* ------------------------------------------------------------------
+   WINDOW HELPERS
+   ------------------------------------------------------------------ */
+function win(b, t0, dur, lane) {
+    if(bd_n >= NWIN) return t0 + dur;
+    w_btn[bd_n]  = b;
+    w_on[bd_n]   = t0;
+    w_off[bd_n]  = t0 + dur;
+    w_lane[bd_n] = lane;
+    bd_n = bd_n + 1;
+    return t0 + dur;
+}
+
+function pre_btn(a) {
+    if(a == 1) return BTN_JUMP;
+    if(a == 3) return BTN_SWAP;
+    if(a == 5) return BTN_CROUCH;
+    if(a == 6) return BTN_BREATH;
+    return -1;
+}
+
+function can_btn(a) {
+    if(a == 4) return BTN_RELOAD;
+    if(a == 5) return BTN_LETHAL;
+    if(a == 6) return BTN_MELEE;
+    if(a == 7) return BTN_TAC;
+    return -1;
+}
+
+function fin_btn(a) {
+    if(a == 1) return BTN_CROUCH;
+    if(a == 2) return BTN_MELEE;
+    if(a == 3) return BTN_SWAP;
+    if(a == 4) return BTN_CROUCH;
+    if(a == 5) return BTN_JUMP;
+    if(a == 6) return BTN_RELOAD;
+    return -1;
+}
+
+
+/* ==================================================================
+   TRICKSHOT - COMPILER
+
+   v6 laid the button steps end to end and only ran the spin in
+   parallel, so a jump-cancel shot was jump, wait, swap, wait, swap -
+   three serial taps that had to finish before anything felt like it
+   had started. That is the "not smooth".
+
+   v7 compiles four named sections that deliberately OVERLAP:
+
+     PRE     starts at 0
+     CANCEL  starts PRE x10 into the pre-move, not after it - the YY
+             lands while you are still rising out of the jump
+     SPIN    starts at LEAD x10, independent of both
+     FINISH  starts FIN x10 after whichever of CANCEL / SPIN ends last
+
+   Every window carries a lane tag so the timeline screen can draw
+   the sections on separate rows.
+   ================================================================== */
+/* One pre-move. Sets two globals rather than returning both:
+     bd_pe = when the NEXT pre-move may start
+     bd_cs = when the cancel chain may start
+   SPRINT is the odd one - it deliberately stays held past bd_pe so a
+   PRE 2 jump happens WHILE you are still sprinting. That is what makes
+   a running jump, and a running jump is what buys the airtime for a
+   second and third cancel. */
+function do_pre(a, t0) {
+    bd_pe = t0;
+    bd_cs = t0;
+    if(a == 1) {                                          /* JUMP        */
+        win(BTN_JUMP, t0, bd_tap, LANE_PRE);
+        bd_pe = t0 + bd_tap + bd_gap;
+        bd_cs = t0 + bd_pre;
+    } else if(a == 2) {                                   /* DIVE        */
+        bd_t = bd_pre + DIVE_RUN;
+        win(BTN_BREATH, t0, bd_t, LANE_PRE);
+        win(BTN_CROUCH, t0 + bd_t, PRONE_MS, LANE_PRE);
+        bd_pe = t0 + bd_t + PRONE_MS;
+        bd_cs = t0 + bd_t + 160;
+    } else if(a == 4) {                                   /* PRONE       */
+        win(BTN_CROUCH, t0, PRONE_MS, LANE_PRE);
+        bd_pe = t0 + PRONE_MS;
+        bd_cs = t0 + 200;
+    } else if(a == 6) {                                   /* SPRINT      */
+        bd_t = bd_pre + DIVE_RUN;
+        win(BTN_BREATH, t0, bd_t + RUN_HOLD, LANE_PRE);
+        bd_pe = t0 + bd_t;
+        bd_cs = t0 + bd_t;
+    } else if(a > 0) {                                    /* SWAP/CROUCH */
+        win(pre_btn(a), t0, bd_tap, LANE_PRE);
+        bd_pe = t0 + bd_tap + bd_gap;
+        bd_cs = t0 + bd_tap + bd_gap;
+    }
+    return 0;
+}
+
+/* One cancel stage: an optional trigger animation, then the swap taps
+   that cut it short. Returns when the stage finished. */
+function do_cancel(a, t0) {
+    bd_t = t0;
+    if(a >= 4) {
+        bd_t  = win(can_btn(a), bd_t, bd_tap, LANE_CAN) + bd_gap;
+        bd_ct = 2;
+    } else {
+        bd_ct = a + 1;                       /* YY=2 YYY=3 YYYY=4 */
+    }
+    for(bd_s = 0; bd_s < bd_ct; bd_s++) {
+        bd_ce = win(BTN_SWAP, bd_t, bd_tap, LANE_CAN);
+        bd_t  = bd_ce + bd_gap;
+    }
+    return bd_ce;
+}
+
+/* ==================================================================
+   TRICKSHOT - COMPILER
+
+   Eight fields, laid out on four lanes that overlap on purpose:
+
+     PRE 1   ├───┤
+     PRE 2       ├──┤                      (jump, still sprinting)
+     CANCEL          ├─┤  ├─┤  ├─┤  ├─┤    (STAGE x10 between them)
+     SPIN    ├──────────────────────────┤
+     FINISH                                ├──┤
+
+   GAP is the rhythm INSIDE one cancel; STAGE is the rest between one
+   cancel and the next. Keeping them separate is the whole point - you
+   want the YY tight and the space between two cancels loose, and one
+   number could not express that.
+   ================================================================== */
+function ts_build() {
+    for(bd_i = 0; bd_i < NWIN; bd_i++) {
+        w_btn[bd_i]  = -1;
+        w_on[bd_i]   = -1;
+        w_off[bd_i]  = -1;
+        w_lane[bd_i] = 0;
+    }
+    bd_n     = 1;                     /* window 0 is reserved for the spin */
+    bd_gap   = oval[O_GAP];
+    bd_tap   = oval[O_TAP];
+    bd_pre   = oval[O_PRE]   * 10;
+    bd_stage = oval[O_STAGE] * 10;
+
+    /* ---------------- PRE 1, PRE 2 ---------------- */
+    do_pre(st[0], 0);
+    if(st[1] > 0) do_pre(st[1], bd_pe);
+
+    /* ---------------- CANCEL 1..4 ---------------- */
+    bd_t  = bd_cs;
+    bd_ce = bd_cs;
+    for(bd_i = 0; bd_i < 4; bd_i++) {
+        bd_a = st[2 + bd_i];
+        if(bd_a > 0) {
+            bd_t = do_cancel(bd_a, bd_t) + bd_stage;
+        }
+    }
+
+    /* ---------------- SPIN ----------------
+       Duration is scaled up by the area the ramp gives away, so
+       SPIN 360ms stays calibrated at every RAMP setting - see
+       spin_pow(). Without this, turning the ramp up would quietly
+       under-rotate every shot. */
+    bd_spin = 0;
+    if(st[6] == 1) bd_spin = (oval[O_TS_SPIN] * 10) / 2;
+    if(st[6] == 2) bd_spin =  oval[O_TS_SPIN] * 10;
+    if(st[6] == 3) bd_spin =  oval[O_TS_SPIN] * 15;
+    if(st[6] == 4) bd_spin =  oval[O_TS_SPIN] * 20;
+    if(st[6] == 5) bd_spin =  oval[O_TS_SPIN] * 25;
+    if(st[6] == 6) bd_spin =  oval[O_TS_SPIN] * 30;
+    if(bd_spin > 0) {
+        bd_area = 1000 - ((RAMP_LOSS * oval[O_TS_RAMP]) / 100);
+        bd_spin = (bd_spin * 1000) / bd_area;
+        if(bd_spin > 3600) bd_spin = 3600;
+        w_on[0]   = oval[O_LEAD] * 10;
+        w_off[0]  = w_on[0] + bd_spin;
+        w_lane[0] = LANE_SPIN;
+    }
+
+    /* ---------------- FINISH ----------------
+       One field now. Value 7 is the PR+MEL composite: prone, then
+       FIN x10 later a melee off the deck - the one two-action ending
+       the library actually used, folded into a single field so the
+       fourth cancel could have its slot. */
+    bd_t = bd_ce;
+    if(w_off[0] > bd_t) bd_t = w_off[0];
+    bd_a = st[7];
+    if(bd_a > 0) {
+        bd_t = bd_t + (oval[O_FIN] * 10);
+        if(bd_a == 1) {
+            bd_t = win(BTN_CROUCH, bd_t, PRONE_MS, LANE_FIN);
+        } else if(bd_a == 7) {
+            bd_t = win(BTN_CROUCH, bd_t, PRONE_MS, LANE_FIN);
+            bd_t = bd_t + (oval[O_FIN] * 10);
+            bd_t = win(BTN_MELEE, bd_t, bd_tap, LANE_FIN);
+        } else {
+            bd_t = win(fin_btn(bd_a), bd_t, bd_tap, LANE_FIN);
+        }
+    }
+
+    bd_max = 0;
+    for(bd_i = 0; bd_i < NWIN; bd_i++) {
+        if(w_off[bd_i] > bd_max) bd_max = w_off[bd_i];
+    }
+    ts_span = bd_max;
+    ts_end  = bd_max + (oval[O_TAIL] * 10);
+    ts_t    = 0;
+    ts_live = 1;
+    return 0;
+}
+
+function ts_win(i) {
+    if(w_on[i] < 0) return 0;
+    if(ts_t >= w_on[i] && ts_t < w_off[i]) return 1;
+    return 0;
+}
+
+/* ------------------------------------------------------------------
+   SPIN ENVELOPE. A real trickshot whips off the mark and decelerates
+   into the target; a flat 100% deflection starts and stops like a
+   switch, which is most of why v6 looked robotic. Three segments -
+   whip in, carry, settle - blended against flat by SPIN RAMP.
+
+   RAMP_LOSS is the area this envelope gives up versus flat, in
+   per-mille, and ts_build() lengthens the window by exactly that so
+   the total rotation is unchanged.
+   ------------------------------------------------------------------ */
+function spin_pow() {
+    sp_d = w_off[0] - w_on[0];
+    if(sp_d < 1) return ts_pow;
+    sp_p = ((ts_t - w_on[0]) * 1000) / sp_d;
+    if(sp_p < 120)      sp_e = 60 + ((sp_p * 40) / 120);
+    else if(sp_p < 620) sp_e = 100;
+    else                sp_e = 100 - (((sp_p - 620) * 60) / 380);
+    sp_e = 100 - (((100 - sp_e) * oval[O_TS_RAMP]) / 100);
+    return (ts_pow * sp_e) / 100;
+}
+
+/* Plays the compiled windows. Never touches L2 or R2 - you scope and
+   you shoot; this only choreographs movement and cancels. */
+function ts_run() {
+    if(!ts_live) return 0;
+
+    /* ABORT ON: the moment you commit to the shot, the stick is
+       yours again mid-spin. */
+    if(oval[O_TS_ABORT] == 1 || oval[O_TS_ABORT] == 3) {
+        if(get_val(BTN_FIRE) > 40) { ts_live = 0; return 0; }
+    }
+    if(oval[O_TS_ABORT] == 2 || oval[O_TS_ABORT] == 3) {
+        if(get_val(BTN_ADS)  > 40) { ts_live = 0; return 0; }
+    }
+
+    ts_t = ts_t + tick;
+    if(ts_t >= ts_end) {
+        /* HOLD LOOP: still holding the direction, so run it again.
+           event_press cannot retrigger from a held button, so this
+           can never fight the mid-sequence abort. */
+        if(oval[O_TS_LOOP] && ts_btn >= 0 && get_val(ts_btn)) {
+            ts_load(ts_mac);
+            ts_build();
+            return 0;
+        }
+        ts_live = 0;
+        return 0;
+    }
+
+    if(ts_win(0)) set_val(STK_RX, spin_pow());
+    for(bd_i = 1; bd_i < NWIN; bd_i++) {
+        if(w_btn[bd_i] >= 0 && ts_win(bd_i)) set_val(w_btn[bd_i], 100);
+    }
+    return 0;
+}
+
+function shot_trig(m) {
+    if(m == 1 && event_press(BTN_FIRE)) return 1;
+    if(m == 2 && event_press(BTN_ADS))  return 1;
+    if(m == 3) {
+        if(event_press(BTN_FIRE)) return 1;
+        if(event_press(BTN_ADS))  return 1;
+    }
+    return 0;
+}
+
+function shot_hold(m) {
+    if(m == 1 && get_val(BTN_FIRE) > 40) return 1;
+    if(m == 2 && get_val(BTN_ADS)  > 40) return 1;
+    if(m == 3) {
+        if(get_val(BTN_FIRE) > 40) return 1;
+        if(get_val(BTN_ADS)  > 40) return 1;
+    }
+    return 0;
+}
+
+function clampv(v) {
+    if(v >  100) return  100;
+    if(v < -100) return -100;
+    return v;
+}
+
+
+/* ==================================================================
+   COMBOS  (sniper aids only - trickshots are the sequencer now)
+   ================================================================== */
+/* Small orbiting offset for MICRO NUDGE. Deliberately weaker than the
+   old AA modes (aa_pw maxes at 6, they used 13) and always scaled down
+   against the player's own deflection in aim_precision() before it is
+   applied - it exists to keep a near-still stick alive, not to steer. */
+combo AA_Nudge {
+    aa_x = aa_pw;    aa_y = 0;        wait(AA_NUDGE_SPEED);
+    aa_x = 0;        aa_y = aa_pw;    wait(AA_NUDGE_SPEED);
+    aa_x = 0-aa_pw;  aa_y = 0;        wait(AA_NUDGE_SPEED);
+    aa_x = 0;        aa_y = 0-aa_pw;  wait(AA_NUDGE_SPEED);
+}
+
+combo QuickScope {
+    set_val(BTN_ADS, 100);
+    wait(qs_d);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_FIRE, 100);
+    wait(qs_h);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(90);
+}
+
+combo AutoRescope {
+    set_val(BTN_ADS, 0);
+    wait(resc_d);
+    set_val(BTN_ADS, 100);
+    wait(250);
+}
+
+combo BoltCancel {
+    wait(bolt_d);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+}
+
+combo DropShot {
+    set_val(BTN_CROUCH, 100);
+    wait(400);
+    set_val(BTN_CROUCH, 0);
+    wait(200);
+}
+
+combo JumpShot {
+    set_val(BTN_JUMP, 100);
+    wait(70);
+    set_val(BTN_JUMP, 0);
+    wait(330);
+}
+
+combo AutoSprint {
+    set_val(BTN_BREATH, 100);
+    wait(130);
+    set_val(BTN_BREATH, 0);
+    wait(90);
+}
+
+combo YYCancel {
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(200);
+}
+
+combo DiveAssist {
+    set_val(BTN_BREATH, 100);
+    wait(120);
+    set_val(BTN_CROUCH, 100);
+    wait(300);
+    set_val(BTN_CROUCH, 0);
+    wait(400);
+}
+
+combo ReloadCancel {
+    set_val(BTN_RELOAD, 100);
+    wait(60);
+    set_val(BTN_RELOAD, 0);
+    wait(680);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+}
+
+combo TurboMelee {
+    set_val(BTN_MELEE, 100);
+    wait(120);
+    set_val(BTN_MELEE, 0);
+    wait(120);
+}
+
+/* STEAL EMBLEM now runs as a tick-driven sequencer (se_start/se_run)
+   instead of a combo, so XTRA DOWN can vary the number of trailing
+   DOWN presses at runtime - combos can't loop or branch. */
+
+combo Buzz {
+    set_rumble(RUMBLE_A, 60);
+    wait(90);
+    reset_rumble();
+}
+
+function buzz() {
+    if(oval[O_RUMBLE]) combo_run(Buzz);
+    return 0;
+}
+
+function stop_all() {
+    combo_stop(AA_Nudge);    combo_stop(QuickScope); combo_stop(AutoRescope);
+    combo_stop(BoltCancel);  combo_stop(DropShot);
+    combo_stop(JumpShot);    combo_stop(AutoSprint); combo_stop(YYCancel);
+    combo_stop(DiveAssist);  combo_stop(ReloadCancel); combo_stop(TurboMelee);
+    ts_live = 0;
+    se_live = 0;
+    aa_x = 0; aa_y = 0;
+    aa_frx = 0; aa_fry = 0;
+    br_t = 0; ads_t = 0;
+    return 0;
+}
+
+function block_all() {
+    set_val(PS4_LX,0);  set_val(PS4_LY,0);  set_val(PS4_RX,0);  set_val(PS4_RY,0);
+    set_val(PS4_R1,0);  set_val(PS4_R2,0);  set_val(PS4_R3,0);
+    set_val(PS4_L1,0);  set_val(PS4_L2,0);  set_val(PS4_L3,0);
+    set_val(PS4_UP,0);  set_val(PS4_DOWN,0);
+    set_val(PS4_LEFT,0);set_val(PS4_RIGHT,0);
+    set_val(PS4_TRIANGLE,0); set_val(PS4_CIRCLE,0);
+    set_val(PS4_CROSS,0);    set_val(PS4_SQUARE,0);
+    set_val(PS4_OPTIONS,0);  set_val(PS4_SHARE,0);
+    set_val(PS4_TOUCH,0);    set_val(PS4_PS,0);
+    return 0;
+}
+
+
+/* ==================================================================
+   MENU LOGIC
+   ================================================================== */
+function menu_logic() {
+    if(event_press(NAV_PGL)) {
+        m_page = m_page - 1;
+        if(m_page < 0) m_page = PAGE_N - 1;
+        m_item = 0;
+        sl_last = -1;
+        buzz();
+    }
+    if(event_press(NAV_PGR)) {
+        m_page = m_page + 1;
+        if(m_page >= PAGE_N) m_page = 0;
+        m_item = 0;
+        sl_last = -1;
+        buzz();
+    }
+    if(event_press(NAV_UP)) {
+        m_item = m_item - 1;
+        if(m_item < 0) m_item = pg_count[m_page] - 1;
+    }
+    if(event_press(NAV_DOWN)) {
+        m_item = m_item + 1;
+        if(m_item >= pg_count[m_page]) m_item = 0;
+    }
+
+    mn_id = pg_first[m_page] + m_item;
+
+    if(event_press(NAV_LEFT))  { adjust(mn_id, -1); rep_t = 0; }
+    if(event_press(NAV_RIGHT)) { adjust(mn_id,  1); rep_t = 0; }
+    if(event_press(NAV_OK))    { adjust(mn_id,  1); rep_t = 0; buzz(); }
+
+    if(get_val(NAV_LEFT) && get_ptime(NAV_LEFT) > 380) {
+        rep_t = rep_t + tick;
+        if(rep_t >= 55) { rep_t = 0; adjust(mn_id, -3); }
+    }
+    if(get_val(NAV_RIGHT) && get_ptime(NAV_RIGHT) > 380) {
+        rep_t = rep_t + tick;
+        if(rep_t >= 55) { rep_t = 0; adjust(mn_id, 3); }
+    }
+
+    if(event_press(NAV_DEF)) {
+        if(otyp[mn_id] != T_ACT) oval[mn_id] = odef[mn_id];
+        buzz();
+    }
+
+    if(event_press(NAV_EXIT)) {
+        save_all();
+        menu_open = 0;
+        flash(1);
+        buzz();
+    }
+
+    slot_sync();
+    return 0;
+}
+
+/* The SLOT EDIT page shows one slot at a time. Changing EDIT SLOT
+   loads that slot into the four editor lines; anything else stores
+   the editor lines back into the selected slot. */
+function slot_sync() {
+    if(m_page == PG_SLOT) {
+        sl_base = oval[O_SLOT_SEL] * SL_STRIDE;
+        if(sl_last != oval[O_SLOT_SEL]) {
+            sl_last = oval[O_SLOT_SEL];
+            for(bd_i = 0; bd_i < 8; bd_i++)
+                oval[O_SL_PRE1 + bd_i] = ts_slot[sl_base + bd_i];
+        } else {
+            for(bd_i = 0; bd_i < 8; bd_i++)
+                ts_slot[sl_base + bd_i] = oval[O_SL_PRE1 + bd_i];
+        }
+    }
+    return 0;
+}
+
+function adjust(id, dir) {
+    if(otyp[id] == T_ACT) {
+        do_action(id);
+    } else {
+        if(otyp[id] == T_ONOFF) {
+            oval[id] = !oval[id];
+        } else {
+            aj_v = oval[id] + (dir * ostp[id]);
+            if(aj_v > omax[id]) aj_v = omin[id];
+            if(aj_v < omin[id]) aj_v = omax[id];
+            oval[id] = aj_v;
+        }
+    }
+    return 0;
+}
+
+function do_action(id) {
+    if(id == O_APPLY) { apply_preset(); flash(2); }
+    if(id == O_SAVE)  { save_all();     flash(1); }
+    if(id == O_RESET) { load_defaults(); save_all(); flash(0); }
+    if(id == O_CAL_TEST)  cal_fire();
+    if(id == O_CAL_APPLY) cal_apply();
+    if(id == O_CAL_GAP)   cal_gap();
+    if(id == O_SE_TEST) {
+        se_tap = oval[O_SE_TAP];
+        se_gap = oval[O_SE_GAP];
+        menu_open = 0;
+        se_start();
+    }
+    if(id == O_TS_AUTO) {
+        /* loads the tested TS TIMING baseline in one press instead
+           of resetting seven lines individually with TRIANGLE. This
+           is the documented-good starting point, not a live signal
+           calibration - CALIBRATE's FIRE TEST / APPLY FIX / TUNE GAP
+           is still how you dial it in for your own setup from here. */
+        oval[O_TAP]   = 28;
+        oval[O_GAP]   = 24;
+        oval[O_STAGE] = 7;
+        oval[O_LEAD]  = 0;
+        oval[O_PRE]   = 8;
+        oval[O_FIN]   = 4;
+        oval[O_TAIL]  = 6;
+        flash(2);
+    }
+    buzz();
+    return 0;
+}
+
+/* ==================================================================
+   CALIBRATION TRAINER
+
+   Calibrating a spin by hand is a guessing game: you fire a 360, you
+   over-rotate by "a bit", and you nudge SPIN 360ms by 5 and try
+   again. The number you actually want is solvable, so this solves it.
+
+   FIRE TEST closes the menu and runs the reference spin (360, 720 or
+   1080) with no cancels, so nothing but the rotation is in play. You
+   face a landmark, fire, and see where you land.
+
+   RESULT is where you ended up, as a fraction of a turn short or
+   long. APPLY FIX then scales SPIN 360ms by the ratio of what you
+   wanted to what you got:
+
+       new = old * wanted / (wanted + error)
+
+   Doing it off a 1080 is worth the extra second: a 3% timing error
+   is about 11 degrees on a 360 and invisible, but 32 degrees on a
+   1080 and obvious - so the bigger reference measures the same error
+   three times more precisely. That is the whole reason CAL REF
+   offers 720 and 1080 at all.
+   ================================================================== */
+function cal_fire() {
+    oval[O_TS_ON] = 1;
+    menu_open = 0;
+    /* MACDEF ids 2/4/6 are the bare 360/720/1080 - no pre-move, no
+       cancel, no finisher, so only the spin is being measured. */
+    cal_want = 2;
+    if(oval[O_CAL_REF] == 1) cal_want = 4;
+    if(oval[O_CAL_REF] == 2) cal_want = 6;
+    ts_fire(cal_want, 0, -1);
+    cal_msg = 1;
+    cal_t   = 1500;
+    return 0;
+}
+
+function cal_apply() {
+    cal_want = CALDEG[oval[O_CAL_REF]];
+    cal_real = cal_want + CALERR[oval[O_CAL_GOT]];
+    if(CALERR[oval[O_CAL_GOT]] == 0 || cal_real < 1) {
+        cal_msg = 3;
+        cal_t   = 1500;
+        return 0;
+    }
+    cal_prev = oval[O_TS_SPIN];
+    cal_new  = (cal_prev * cal_want) / cal_real;
+    if(cal_new < omin[O_TS_SPIN] || cal_new > omax[O_TS_SPIN]) {
+        cal_msg = 4;
+        cal_t   = 1800;
+        return 0;
+    }
+    oval[O_TS_SPIN] = cal_new;
+    oval[O_CAL_GOT] = 0;          /* result consumed - do not re-apply it */
+    cal_msg = 2;
+    cal_t   = 1800;
+    return 0;
+}
+
+/* GAP is the other thing worth a guided test. Fire YY360: if the
+   cancel is not cancelling, the game read two separate weapon swaps
+   and GAP is too wide. This drops it one step and fires, so you can
+   walk it down without leaving the lobby. */
+function cal_gap() {
+    oval[O_TS_ON] = 1;
+    if(oval[O_GAP] > omin[O_GAP]) oval[O_GAP] = oval[O_GAP] - ostp[O_GAP];
+    menu_open = 0;
+    ts_fire(8, 0, -1);            /* MACDEF 8 = YY360 */
+    cal_msg = 1;
+    cal_t   = 1500;
+    return 0;
+}
+
+function flash(n) {
+    notif_id = n;
+    notif_t  = 900;
+    return 0;
+}
+
+
+/* ==================================================================
+   PRESETS
+   ================================================================== */
+function apply_preset() {
+    pp_sel = oval[O_PRESET];
+
+    if(pp_sel == 1) {                   /* DSR-50  - bolt, long hold */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=26; oval[O_BREATH]=1;
+        oval[O_BOLT_ON]=1; oval[O_BOLT_DLY]=45;
+        oval[O_AA_CURVE]=5; oval[O_AA_SMOOTH]=4; oval[O_AA_BLINK]=1;
+    }
+    if(pp_sel == 2) {                   /* BALLISTA - faster bolt */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=21; oval[O_BREATH]=1;
+        oval[O_BOLT_ON]=1; oval[O_BOLT_DLY]=38;
+        oval[O_AA_CURVE]=5; oval[O_AA_SMOOTH]=4; oval[O_AA_BLINK]=1;
+    }
+    if(pp_sel == 3) {                   /* SVU-AS   - semi auto */
+        oval[O_QS_ON]=0;  oval[O_BREATH]=2; oval[O_BOLT_ON]=0;
+        oval[O_AA_CURVE]=4; oval[O_AA_SMOOTH]=5; oval[O_AA_BLINK]=1;
+    }
+    if(pp_sel == 4) {                   /* XPR-50 */
+        oval[O_QS_ON]=0;  oval[O_BREATH]=2; oval[O_BOLT_ON]=0;
+        oval[O_AA_CURVE]=4; oval[O_AA_SMOOTH]=5; oval[O_AA_BLINK]=1;
+    }
+    if(pp_sel == 5) {                   /* QS RUSH - aggressive, loose */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=18; oval[O_QS_HOLD]=8;
+        oval[O_RESCOPE]=1; oval[O_RESC_DLY]=28;
+        oval[O_BREATH]=2; oval[O_JUMPS]=1;
+        oval[O_AA_CURVE]=2; oval[O_AA_SMOOTH]=1; oval[O_AA_BLINK]=0;
+    }
+    if(pp_sel == 6) {                   /* TRICK */
+        oval[O_TS_ON]=1;  oval[O_TS_SPIN]=60; oval[O_TS_DIR]=2;
+        oval[O_TS_MOD]=1;
+        oval[O_BIND_U]=2;   oval[O_BIND_D]=8;    /* 360    / YY360  */
+        oval[O_BIND_L]=22;  oval[O_BIND_R]=16;   /* DRP360 / JMP360 */
+        oval[O_MBIND_U]=4;  oval[O_MBIND_D]=6;   /* 720    / 1080   */
+        oval[O_MBIND_L]=29; oval[O_MBIND_R]=19;  /* TEMPR2 / JMPYY2 */
+        oval[O_TS_RAMP]=55; oval[O_TS_ABORT]=2; oval[O_STAGE]=7;
+        oval[O_BREATH]=1;
+        oval[O_AA_CURVE]=4; oval[O_AA_SMOOTH]=3; oval[O_AA_BLINK]=1;
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   TABLE SETUP
+   ================================================================== */
+function build_table() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        omin[ld_i] = OMIN[ld_i];
+        omax[ld_i] = OMAX[ld_i];
+        ostp[ld_i] = OSTP[ld_i];
+        otyp[ld_i] = OTYP[ld_i];
+        odef[ld_i] = ODEF[ld_i];
+        ld_i = ld_i + 1;
+    }
+    return 0;
+}
+
+function build_pages() {
+    ld_i = 0;
+    while(ld_i < PAGE_N) {
+        pg_first[ld_i] = PGFIRST[ld_i];
+        pg_count[ld_i] = PGCOUNT[ld_i];
+        ld_i = ld_i + 1;
+    }
+    return 0;
+}
+
+function load_defaults() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        oval[ld_i] = odef[ld_i];
+        ld_i = ld_i + 1;
+    }
+    for(ld_i = 0; ld_i < 32; ld_i++) ts_slot[ld_i] = SLOTDEF[ld_i];
+    sl_last = -1;
+    return 0;
+}
+
+function clamp_all() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        if(otyp[ld_i] != T_ACT) {
+            if(oval[ld_i] > omax[ld_i]) oval[ld_i] = omax[ld_i];
+            if(oval[ld_i] < omin[ld_i]) oval[ld_i] = omin[ld_i];
+        }
+        ld_i = ld_i + 1;
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   PERSISTENT STORAGE
+   The Zen has 64 SPVARs per slot, so packing stays loose and legible.
+   A pvar is a signed 16-bit int: every pack below stays under 32767.
+   get_pvar hits EEPROM, so it is only ever called from init.
+   ================================================================== */
+function bitof(bv, bb) {
+    return (bv >> bb) & 1;
+}
+
+/* four 3-bit slot fields out of one pvar */
+function unpack4(base, v) {
+    ts_slot[base]     =  v        & 7;
+    ts_slot[base + 1] = (v >> 3)  & 7;
+    ts_slot[base + 2] = (v >> 6)  & 7;
+    ts_slot[base + 3] = (v >> 9)  & 7;
+    return 0;
+}
+
+function save_all() {
+    /* --- one-bit options --- */
+    sv_a = oval[O_AA_BLINK]
+         + (oval[O_AA_NUDGE]  << 1)
+         + (oval[O_BR_REST]   << 2)
+         + (oval[O_QS_ON]     << 3)
+         + (oval[O_RESCOPE]   << 4)
+         + (oval[O_BOLT_ON]   << 5)
+         + (oval[O_RELCAN]    << 6)
+         + (oval[O_SPRINT]    << 7)
+         + (oval[O_YYCAN]     << 8)
+         + (oval[O_DIVE]      << 9)
+         + (oval[O_MELEE]     << 10);
+    set_pvar(SPVAR_1, sv_a);
+
+    sv_b = oval[O_TS_ON]
+         + (oval[O_ANIM]      << 1)
+         + (oval[O_RUMBLE]    << 2)
+         + (oval[O_EYE_LOOK]  << 3)
+         + (oval[O_TEAR]      << 4)
+         + (oval[O_TIMELINE]  << 5)
+         + (oval[O_TS_LOOP]   << 6);
+    set_pvar(SPVAR_2, sv_b);
+
+    /* --- small multi-value options --- */
+    set_pvar(SPVAR_3, oval[O_BREATH]
+                    + (oval[O_DROP]     << 2)
+                    + (oval[O_JUMPS]    << 4)
+                    + (oval[O_TS_ABORT] << 6)
+                    + (oval[O_TS_MOD]   << 8)
+                    + (oval[O_TS_DIR]   << 10));
+    set_pvar(SPVAR_4, oval[O_PRESET]
+                    + (oval[O_AA_CURVE]  << 3)
+                    + (oval[O_AA_SMOOTH] << 7)
+                    + (oval[O_AA_NPWR]   << 11));
+
+    /* --- numeric pairs, 7 bits each --- */
+    set_pvar(SPVAR_5,  oval[O_BR_DLY]   + (oval[O_BR_HOLD]  << 7));
+    set_pvar(SPVAR_6,  oval[O_QS_DLY]   + (oval[O_QS_HOLD]  << 7));
+    set_pvar(SPVAR_7,  oval[O_RESC_DLY] + (oval[O_BOLT_DLY] << 7));
+
+    set_pvar(SPVAR_8,  oval[O_CAL_REF]  + (oval[O_CAL_GOT] << 2));
+
+    /* STEAL EMBLEM - on/off(1) + trigger(3) + TAP(8) + XTRA DOWN(3,
+       up to 6) = 15 bits, one pvar. GAP gets its own since it runs up
+       to 250 and wouldn't fit alongside the rest. */
+    set_pvar(SPVAR_9,  oval[O_SE_ON] + (oval[O_SE_TRIG] << 1) + (oval[O_SE_TAP] << 4) + (oval[O_SE_XDN] << 12));
+    set_pvar(SPVAR_10, oval[O_SE_GAP]);
+
+    set_pvar(SPVAR_12, oval[O_TS_SPIN]  + (MAGIC << 7));
+    set_pvar(SPVAR_13, oval[O_TAP]      + (oval[O_GAP]  << 7));
+    set_pvar(SPVAR_14, oval[O_LEAD]     + (oval[O_PRE]  << 6));
+    set_pvar(SPVAR_15, oval[O_FIN]      + (oval[O_TAIL] << 6));
+    set_pvar(SPVAR_28, oval[O_TS_RAMP]);
+    set_pvar(SPVAR_29, oval[O_STAGE]);
+
+    /* Binds are 6 bits and only TWO to a pvar. With 45 macros a 5-bit
+       field does not fit, and three 6-bit fields would pack to
+       44 + 44*64 + 44*4096 = 183 260 - far past the signed 16-bit
+       ceiling. Two fields max out at 44 + 44*64 = 2860. That ceiling
+       is what caps the library size, not the menu. */
+    set_pvar(SPVAR_16, oval[O_BIND_U]  + (oval[O_BIND_D]  << 6));
+    set_pvar(SPVAR_17, oval[O_BIND_L]  + (oval[O_BIND_R]  << 6));
+    set_pvar(SPVAR_18, oval[O_MBIND_U] + (oval[O_MBIND_D] << 6));
+    set_pvar(SPVAR_19, oval[O_MBIND_L] + (oval[O_MBIND_R] << 6));
+
+    /* Eight fields per slot at 3 bits is 24 bits, so a slot spans two
+       pvars: fields 0-3 then 4-7. Each half maxes at 4095. */
+    set_pvar(SPVAR_20, ts_slot[0]  + (ts_slot[1]  << 3) + (ts_slot[2]  << 6) + (ts_slot[3]  << 9));
+    set_pvar(SPVAR_21, ts_slot[4]  + (ts_slot[5]  << 3) + (ts_slot[6]  << 6) + (ts_slot[7]  << 9));
+    set_pvar(SPVAR_22, ts_slot[8]  + (ts_slot[9]  << 3) + (ts_slot[10] << 6) + (ts_slot[11] << 9));
+    set_pvar(SPVAR_23, ts_slot[12] + (ts_slot[13] << 3) + (ts_slot[14] << 6) + (ts_slot[15] << 9));
+    set_pvar(SPVAR_24, ts_slot[16] + (ts_slot[17] << 3) + (ts_slot[18] << 6) + (ts_slot[19] << 9));
+    set_pvar(SPVAR_25, ts_slot[20] + (ts_slot[21] << 3) + (ts_slot[22] << 6) + (ts_slot[23] << 9));
+    set_pvar(SPVAR_26, ts_slot[24] + (ts_slot[25] << 3) + (ts_slot[26] << 6) + (ts_slot[27] << 9));
+    set_pvar(SPVAR_27, ts_slot[28] + (ts_slot[29] << 3) + (ts_slot[30] << 6) + (ts_slot[31] << 9));
+    return 0;
+}
+
+/* v4.0 deleted options, added options and changed the trickshot field
+   layout all at once. Past versions carried saves forward through
+   translation tables, but there is no honest mapping from a 3-cancel /
+   2-finish slot, or from AA MODE = CIRCLE, onto this layout - a
+   migration would have been guesswork wearing a table's clothes. So
+   this one generation resets instead: anything not tagged MAGIC 94 is
+   discarded and the defaults are written back. Future layout changes
+   should go back to adding a migration branch here rather than
+   repeating this. */
+function load_all() {
+    lo_c  = get_pvar(SPVAR_12, 0, 32000, 0);
+    lo_mg = lo_c >> 7;
+    if(lo_mg != MAGIC) {
+        save_all();                 /* nothing valid stored - keep defaults */
+        return 0;
+    }
+    oval[O_TS_SPIN] = lo_c & 127;
+
+    lo_c = get_pvar(SPVAR_1, 0, 32000, 0);
+    oval[O_AA_BLINK] = bitof(lo_c, 0);
+    oval[O_AA_NUDGE] = bitof(lo_c, 1);
+    oval[O_BR_REST]  = bitof(lo_c, 2);
+    oval[O_QS_ON]    = bitof(lo_c, 3);
+    oval[O_RESCOPE]  = bitof(lo_c, 4);
+    oval[O_BOLT_ON]  = bitof(lo_c, 5);
+    oval[O_RELCAN]   = bitof(lo_c, 6);
+    oval[O_SPRINT]   = bitof(lo_c, 7);
+    oval[O_YYCAN]    = bitof(lo_c, 8);
+    oval[O_DIVE]     = bitof(lo_c, 9);
+    oval[O_MELEE]    = bitof(lo_c, 10);
+
+    lo_c = get_pvar(SPVAR_2, 0, 32000, 0);
+    oval[O_TS_ON]    = bitof(lo_c, 0);
+    oval[O_ANIM]     = bitof(lo_c, 1);
+    oval[O_RUMBLE]   = bitof(lo_c, 2);
+    oval[O_EYE_LOOK] = bitof(lo_c, 3);
+    oval[O_TEAR]     = bitof(lo_c, 4);
+    oval[O_TIMELINE] = bitof(lo_c, 5);
+    oval[O_TS_LOOP]  = bitof(lo_c, 6);
+
+    lo_c = get_pvar(SPVAR_3, 0, 32000, 0);
+    oval[O_BREATH]   =  lo_c        & 3;
+    oval[O_DROP]     = (lo_c >> 2)  & 3;
+    oval[O_JUMPS]    = (lo_c >> 4)  & 3;
+    oval[O_TS_ABORT] = (lo_c >> 6)  & 3;
+    oval[O_TS_MOD]   = (lo_c >> 8)  & 3;
+    oval[O_TS_DIR]   = (lo_c >> 10) & 3;
+
+    lo_c = get_pvar(SPVAR_4, 0, 32000, 0);
+    oval[O_PRESET]    =  lo_c        & 7;
+    oval[O_AA_CURVE]  = (lo_c >> 3)  & 15;
+    oval[O_AA_SMOOTH] = (lo_c >> 7)  & 15;
+    oval[O_AA_NPWR]   = (lo_c >> 11) & 7;
+
+    lo_c = get_pvar(SPVAR_5, 0, 32000, 0);
+    oval[O_BR_DLY]   = lo_c & 127;  oval[O_BR_HOLD]  = (lo_c >> 7) & 127;
+    lo_c = get_pvar(SPVAR_6, 0, 32000, 0);
+    oval[O_QS_DLY]   = lo_c & 127;  oval[O_QS_HOLD]  = (lo_c >> 7) & 127;
+    lo_c = get_pvar(SPVAR_7, 0, 32000, 0);
+    oval[O_RESC_DLY] = lo_c & 127;  oval[O_BOLT_DLY] = (lo_c >> 7) & 127;
+
+    lo_c = get_pvar(SPVAR_8, 0, 32000, 0);
+    oval[O_CAL_REF] = lo_c & 3;   oval[O_CAL_GOT] = (lo_c >> 2) & 7;
+
+    lo_c = get_pvar(SPVAR_9, 0, 32000, 0);
+    oval[O_SE_ON]   =  lo_c        & 1;
+    oval[O_SE_TRIG] = (lo_c >> 1)  & 7;
+    oval[O_SE_TAP]  = (lo_c >> 4)  & 255;
+    oval[O_SE_XDN]  = (lo_c >> 12) & 7;
+    oval[O_SE_GAP]  = get_pvar(SPVAR_10, 0, 250, 70);
+
+    lo_c = get_pvar(SPVAR_13, 0, 32000, 0);
+    oval[O_TAP]  = lo_c & 127;  oval[O_GAP]  = (lo_c >> 7) & 127;
+    lo_c = get_pvar(SPVAR_14, 0, 32000, 0);
+    oval[O_LEAD] = lo_c & 63;   oval[O_PRE]  = (lo_c >> 6) & 63;
+    lo_c = get_pvar(SPVAR_15, 0, 32000, 0);
+    oval[O_FIN]  = lo_c & 63;   oval[O_TAIL] = (lo_c >> 6) & 63;
+
+    oval[O_TS_RAMP] = get_pvar(SPVAR_28, 0, 100, 55);
+    oval[O_STAGE]   = get_pvar(SPVAR_29, 0, 60, 7);
+
+    lo_c = get_pvar(SPVAR_16, 0, 32000, 0);
+    oval[O_BIND_U]  = lo_c & 63;   oval[O_BIND_D]  = (lo_c >> 6) & 63;
+    lo_c = get_pvar(SPVAR_17, 0, 32000, 0);
+    oval[O_BIND_L]  = lo_c & 63;   oval[O_BIND_R]  = (lo_c >> 6) & 63;
+    lo_c = get_pvar(SPVAR_18, 0, 32000, 0);
+    oval[O_MBIND_U] = lo_c & 63;   oval[O_MBIND_D] = (lo_c >> 6) & 63;
+    lo_c = get_pvar(SPVAR_19, 0, 32000, 0);
+    oval[O_MBIND_L] = lo_c & 63;   oval[O_MBIND_R] = (lo_c >> 6) & 63;
+
+    lo_c = get_pvar(SPVAR_20, 0, 32000, 0);  unpack4(0,  lo_c);
+    lo_c = get_pvar(SPVAR_21, 0, 32000, 0);  unpack4(4,  lo_c);
+    lo_c = get_pvar(SPVAR_22, 0, 32000, 0);  unpack4(8,  lo_c);
+    lo_c = get_pvar(SPVAR_23, 0, 32000, 0);  unpack4(12, lo_c);
+    lo_c = get_pvar(SPVAR_24, 0, 32000, 0);  unpack4(16, lo_c);
+    lo_c = get_pvar(SPVAR_25, 0, 32000, 0);  unpack4(20, lo_c);
+    lo_c = get_pvar(SPVAR_26, 0, 32000, 0);  unpack4(24, lo_c);
+    lo_c = get_pvar(SPVAR_27, 0, 32000, 0);  unpack4(28, lo_c);
+
+    clamp_all();
+    sl_last = -1;
+    return 0;
+}
+
+
+/* ==================================================================
+   NUMBER RENDERING
+   ================================================================== */
+function print_num(nx, ny, nfont, ncol, nval) {
+    np_v   = nval;
+    np_neg = 0;
+    if(np_v < 0) { np_neg = 1; np_v = 0 - np_v; }
+
+    np_n = 0;
+    if(np_v == 0) {
+        np_dig[0] = 0;
+        np_n = 1;
+    }
+    while(np_v > 0) {
+        np_dig[np_n] = np_v % 10;
+        np_v = np_v / 10;
+        np_n = np_n + 1;
+    }
+
+    np_i = 1;
+    if(np_neg) {
+        putc_oled(1, CH_MINUS);
+        np_i = 2;
+    }
+    np_j = np_n;
+    while(np_j > 0) {
+        np_j = np_j - 1;
+        putc_oled(np_i, CH_ZERO + np_dig[np_j]);
+        np_i = np_i + 1;
+    }
+    puts_oled(nx, ny, nfont, np_i - 1, ncol);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED PRIMITIVES
+   ================================================================== */
+/* ==================================================================
+   OLED - BOOT
+   ================================================================== */
+/* BOOT PROGRESS. Was a row of loose vertical dashes that read as
+   screen tearing. Now a bracketed track with a bright leading edge -
+   quarter ticks sit inside the track and get overrun as it fills. */
+function boot_bar(pct) {
+    line_oled(12, 49, 12, 57, 1, OLED_WHITE);
+    line_oled(12, 49, 17, 49, 1, OLED_WHITE);
+    line_oled(12, 57, 17, 57, 1, OLED_WHITE);
+    line_oled(115, 49, 115, 57, 1, OLED_WHITE);
+    line_oled(110, 49, 115, 49, 1, OLED_WHITE);
+    line_oled(110, 57, 115, 57, 1, OLED_WHITE);
+    for(i_ring = 1; i_ring < 4; i_ring++)
+        line_oled(16 + ((i_ring * 96) / 4), 52, 16 + ((i_ring * 96) / 4), 54, 1, OLED_WHITE);
+    sc_x = (pct * 96) / 100;
+    if(sc_x > 0) rect_oled(16, 51, sc_x, 5, 1, OLED_WHITE);
+    line_oled(16 + sc_x, 48, 16 + sc_x, 58, 1, OLED_WHITE);
+    return 0;
+}
+
+/* ------------------------------------------------------------------
+   EYES. The house mark, rebuilt.
+
+   v5 drew each eye as five hand-placed line segments plus a circle,
+   which is why the pair never looked like a pair - the two eyes had
+   different outlines, the corners didn't meet, and the iris sat off
+   to one side of a lopsided socket.
+
+   Both lids are now the same parametric curve, mirrored, so the eye
+   is a true almond that closes cleanly at both corners. The curve is
+   a flattened parabola rather than a plain one: full height at the
+   centre, zero at the corners, but with a rounder crown, which is
+   what makes it read as an eyelid instead of a wedge.
+
+     ap    = upper-lid aperture in pixels, 0 (shut) .. EYE_AP (open)
+     gx/gy = iris offset - this is what makes the eyes look around
+   ------------------------------------------------------------------ */
+function lid_y(h, x, w2) {
+    ey_q = w2 - (x * x);
+    return (h * (ey_q + ((2 * ey_q * ey_q) / w2))) / (3 * w2);
+}
+
+/* brow: a tapered wedge walked from the outer tip inward - flat and
+   thin at the outside, curving down and thickening toward the inner
+   end, which is the focused look rather than the sad one. dirn +1/-1
+   mirrors the pair.
+
+   The drop is accumulated in 1/8px and divided once at the end. That
+   detail matters: quantising an arc term and a tilt term separately,
+   the way v5 did, let them fight each other by a pixel at a time and
+   the stroke came out visibly ragged. One value, one rounding. */
+function draw_brow(bx, by, dirn) {
+    ey_py = -99;
+    for(ey_i = 0; ey_i <= BROW_W * 2; ey_i++) {
+        ey_v  = (((ey_i * 56) / (BROW_W * 2))
+              +  ((ey_i * ey_i * 56) / (BROW_W * BROW_W * 4))) / 2;
+        ey_th = (ey_i * 3) / (BROW_W * 2);
+        if((BROW_W * 2) - ey_i < 4) ey_th = (BROW_W * 2) - ey_i - 1;  /* point the inner tip */
+        if(ey_th < 0) ey_th = 0;
+        ey_x  = bx - (BROW_W * dirn) + (ey_i * dirn);
+        ey_y  = by + (ey_v / 8);
+        /* bridge up to the previous column's top, or the stroke gaps
+           wherever the curve steps a pixel while the taper is thin */
+        ey_t0 = ey_y;
+        if(ey_py > -90 && ey_py < ey_t0) ey_t0 = ey_py;
+        line_oled(ey_x, ey_t0, ey_x, ey_y + ey_th, 1, OLED_WHITE);
+        ey_py = ey_y;
+    }
+    return 0;
+}
+
+function draw_eye(ex, ey, ap, gx, gy) {
+    /* shut - one shallow lid curve, nothing else */
+    if(ap < 1) {
+        ey_py = -99;
+        for(ey_i = 0 - EYE_W; ey_i <= EYE_W; ey_i++) {
+            ey_y = ey + 1 - lid_y(2, ey_i, EYE_W2);
+            if(ey_py > -90) line_oled(ex + ey_i - 1, ey_py, ex + ey_i, ey_y, 1, OLED_WHITE);
+            ey_py = ey_y;
+            if(ey_i > 4 - EYE_W && ey_i < EYE_W - 4)
+                pixel_oled(ex + ey_i, ey_y + 1, OLED_WHITE);   /* same weight as the brow */
+        }
+        return 0;
+    }
+
+    /* upper lid, doubled through the middle so it carries some weight */
+    ey_py = -99;
+    for(ey_i = 0 - EYE_W; ey_i <= EYE_W; ey_i++) {
+        ey_y = ey - lid_y(ap, ey_i, EYE_W2);
+        if(ey_py > -90) line_oled(ex + ey_i - 1, ey_py, ex + ey_i, ey_y, 1, OLED_WHITE);
+        ey_py = ey_y;
+        /* drop the doubled row once the lid is nearly down, or the
+           mid-blink frames come out heavier than the shut one */
+        if(ap > 4 && ey_i > 5 - EYE_W && ey_i < EYE_W - 5)
+            pixel_oled(ex + ey_i, ey_y + 1, OLED_WHITE);
+    }
+
+    /* lower lid, shallower and single weight */
+    ey_py = -99;
+    for(ey_i = 0 - EYE_W; ey_i <= EYE_W; ey_i++) {
+        ey_y = ey + lid_y((ap * 5) / 9, ey_i, EYE_W2);   /* lower lid is shallower */
+        if(ey_py > -90) line_oled(ex + ey_i - 1, ey_py, ex + ey_i, ey_y, 1, OLED_WHITE);
+        ey_py = ey_y;
+    }
+
+    /* iris, with a punched-out catchlight at the upper left - on a
+       1-bit panel that tiny black notch is the whole difference
+       between a glossy eye and a black dot. Radius follows the
+       aperture, so a blink covers the iris instead of leaving a disc
+       floating inside a shut eye. */
+    ey_ir = ap / 3;
+    if(ey_ir > 4) ey_ir = 4;
+    if(ey_ir < 1) return 0;
+    circle_oled(ex + gx, ey - 1 + gy, ey_ir, 1, OLED_WHITE);
+    if(ey_ir > 2) {
+        pixel_oled(ex + gx - 1, ey - 2 + gy, OLED_BLACK);
+        if(ey_ir > 3) pixel_oled(ex + gx - 2, ey - 2 + gy, OLED_BLACK);
+    }
+    return 0;
+}
+
+function draw_eyes(ap, yoff, gx, gy) {
+    draw_brow(EYE_LX, EYE_BY + yoff,  1);
+    draw_brow(EYE_RX, EYE_BY + yoff, -1);
+    draw_eye(EYE_LX, EYE_EY + yoff, ap, gx, gy);
+    draw_eye(EYE_RX, EYE_EY + yoff, ap, gx, gy);
+    return 0;
+}
+
+
+/* ------------------------------------------------------------------
+   TEAR. Runs off the outer corner of the right eye. One pixel wide
+   with a slow wobble so it doesn't read as a ruled line, and the bead
+   at the tip gets a point on top and a highlight in the body.
+   ------------------------------------------------------------------ */
+function tear_streak(tx, y0, y1) {
+    for(ty_i = y0; ty_i <= y1; ty_i++) {
+        ty_x = tx + (SIN64[(ty_i * 2) % 64] / 70);   /* one slow bow, not a zigzag */
+        pixel_oled(ty_x, ty_i, OLED_WHITE);
+    }
+    return 0;
+}
+
+function tear_drop(tx, ty, r) {
+    circle_oled(tx, ty, r, 1, OLED_WHITE);
+    if(r > 1) {
+        pixel_oled(tx, ty - r - 1, OLED_WHITE);
+        pixel_oled(tx - 1, ty - 1, OLED_BLACK);
+    }
+    return 0;
+}
+
+/* Idle tear cycle: well, fall, dry, wait. Driven off tr_t, which the
+   idle screen advances one per animation tick. */
+function idle_tear(tx, ty0) {
+    if(tr_t < 20) {
+        tear_drop(tx, ty0 + 3, 1 + (tr_t / 14));
+        return 0;
+    }
+    if(tr_t < 54) {
+        tr_ph = tr_t - 20;
+        tr_y  = ty0 + 3 + ((tr_ph * tr_ph * (58 - ty0)) / 1156);   /* accelerates */
+        if(tr_y > 62) tr_y = 62;
+        tear_streak(tx, ty0 + 2, tr_y - 3);
+        tear_drop(tx, tr_y, 2);
+        return 0;
+    }
+    if(tr_t < 72) {
+        tr_y = ty0 + 2 + (((tr_t - 54) * (60 - ty0)) / 18);        /* dries downward */
+        tear_streak(tx, tr_y, 62);
+        return 0;
+    }
+    return 0;
+}
+
+
+/* ------------------------------------------------------------------
+   BOOT - the eyes open, a tear wells at the right eye, then runs down
+   for the rest of the boot window before the title card.
+   ------------------------------------------------------------------ */
+function draw_boot() {
+    cls_oled(OLED_BLACK);
+
+    /* Eyes for the whole boot now - no name, no rule, no version
+       plate. The face reads better on its own than it did with a
+       wordmark stacked on top of it, and the eyes were always the
+       house mark anyway. The bar still shows the boot completing. */
+    ey_ap = EYE_AP;
+    if(boot_t < 420) ey_ap = (boot_t * EYE_AP) / 420;    /* lids part */
+    draw_eyes(ey_ap, 0, 0, 0);
+
+    if(boot_t >= 420 && boot_t < 900) {
+        tear_drop(TEAR_X, EYE_EY + 3, 1 + ((boot_t - 420) / 300));
+    } else if(boot_t >= 900) {
+        sc_v = EYE_EY + 3 + (((boot_t - 900) * 29) / 1700);
+        if(sc_v > 60) sc_v = 60;
+        tear_streak(TEAR_X, EYE_EY + 3, sc_v - 3);
+        tear_drop(TEAR_X, sc_v, 2);
+    }
+
+    if(boot_t >= 2600) {
+        sc_v = ((boot_t - 2600) * 100) / 1000;
+        if(sc_v > 100) sc_v = 100;
+        boot_bar(sc_v);
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - TIMELINE
+
+   TIMELINE on the DISPLAY page. When it is on, firing a trickshot
+   paints the compiled windows as bars for the length of the sequence
+   plus a beat, then the idle screen comes back untouched. One row per
+   section, a playhead that runs with the macro, and the total on the
+   header - so you can see the spacing standing in an empty lobby
+   instead of guessing at it in a match.
+   ================================================================== */
+function draw_timeline() {
+    cls_oled(OLED_BLACK);
+    rect_oled(0, 0, 128, 11, 1, OLED_WHITE);
+    print(3, 2, OLED_FONT_SMALL, OLED_BLACK, V_MACRO[ts_mac]);
+    print_num(80, 2, OLED_FONT_SMALL, OLED_BLACK, ts_span);   /* up to 4 digits */
+    print(110, 2, OLED_FONT_SMALL, OLED_BLACK, T_MS[0]);
+
+    if(ts_end < 1) return 0;
+
+    for(tl_i = 0; tl_i < 4; tl_i++) {
+        tl_y = 15 + (tl_i * 11);
+        print(1, tl_y, OLED_FONT_SMALL, OLED_WHITE, LANEL[tl_i]);
+        /* dotted rail, so an empty section still reads as a section */
+        for(tl_x0 = 24; tl_x0 < 126; tl_x0 += 4)
+            pixel_oled(tl_x0, tl_y + 3, OLED_WHITE);
+    }
+
+    for(tl_i = 0; tl_i < NWIN; tl_i++) {
+        if(w_on[tl_i] >= 0) {
+            tl_x0 = 24 + ((w_on[tl_i]  * 100) / ts_end);
+            tl_x1 = 24 + ((w_off[tl_i] * 100) / ts_end);
+            if(tl_x1 <= tl_x0) tl_x1 = tl_x0 + 1;
+            tl_y  = 15 + (w_lane[tl_i] * 11);
+            /* the spin is an axis deflection, not a press - hollow it
+               out so it can't be mistaken for a button window */
+            if(w_lane[tl_i] == LANE_SPIN) {
+                rect_oled(tl_x0, tl_y, tl_x1 - tl_x0, 7, 0, OLED_WHITE);
+                line_oled(tl_x0, tl_y + 3, tl_x1, tl_y + 3, 1, OLED_WHITE);
+            } else {
+                rect_oled(tl_x0, tl_y, tl_x1 - tl_x0, 7, 1, OLED_WHITE);
+            }
+        }
+    }
+
+    /* playhead - freezes wherever an abort stopped the sequence */
+    tl_x0 = 24 + ((ts_t * 100) / ts_end);
+    if(tl_x0 > 124) tl_x0 = 124;
+    line_oled(tl_x0, 13, tl_x0, 59, 1, OLED_WHITE);
+    line_oled(tl_x0 - 2, 61, tl_x0 + 2, 61, 1, OLED_WHITE);
+    line_oled(tl_x0 - 2, 61, tl_x0, 59, 1, OLED_WHITE);
+    line_oled(tl_x0 + 2, 61, tl_x0, 59, 1, OLED_WHITE);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - IDLE
+   IDLE VIEW on the DISPLAY page selects the screen. v5 declared the
+   option and then never read it - draw_idle always drew the eyes and
+   draw_view_scope / draw_view_binds / idle_update were dead code.
+   ================================================================== */
+function draw_idle() {
+    cls_oled(OLED_BLACK);
+
+    if(master_off) {
+        rect_oled(4, 22, 120, 20, 0, OLED_WHITE);
+        print(20, 27, OLED_FONT_MEDIUM, OLED_WHITE, T_OFF[0]);
+        print(10, 50, OLED_FONT_SMALL, OLED_WHITE, T_REARM[0]);
+        return 0;
+    }
+
+    if(cal_t > 0) {
+        draw_cal();
+        return 0;
+    }
+
+    if(tl_t > 0) {
+        draw_timeline();
+        return 0;
+    }
+
+    /* Eyes, always. The SCOPE range scene and the BINDS list are gone
+       along with the IDLE VIEW option that picked between them - the
+       face is the screen, and it does not need a name printed over it
+       or a rule line boxing it in. */
+    ey_ap = EYE_AP;
+    if(oval[O_ANIM]) {
+        ey_ph = anim % BLINK_PERIOD;
+        if(ey_ph < 6) ey_ap = BLINKSEQ[ey_ph];
+    }
+
+    /* iris drift on two different periods, so the gaze traces a slow
+       figure rather than sliding back and forth on one axis */
+    ey_dx = 0;
+    ey_dy = 0;
+    if(oval[O_EYE_LOOK]) {
+        ey_dx = (SIN64[(anim / 3) % 64] * 3) / 100;
+        ey_dy =  SIN64[((anim / 7) + 16) % 64]      / 100;
+    }
+
+    draw_eyes(ey_ap, 2, ey_dx, ey_dy);
+
+    if(oval[O_TEAR]) {
+        tr_t = tr_t + 1;
+        if(tr_t >= TEAR_CYCLE) tr_t = 0;
+        idle_tear(TEAR_X, EYE_EY + 2);
+    } else {
+        tr_t = 0;
+    }
+    return 0;
+}
+
+
+
+/* ==================================================================
+   OLED - NOTIFICATIONS
+   ================================================================== */
+/* Calibration feedback. Deliberately its own screen rather than a
+   line on the menu page: you are looking at the TV when the shot
+   fires, and the number you need is the one waiting when you look
+   back down at the controller. */
+function draw_cal() {
+    cls_oled(OLED_BLACK);
+    rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+    print(3, 2, OLED_FONT_SMALL, OLED_BLACK, PGN[4]);
+
+    if(cal_msg == 1) {
+        print(6, 20, OLED_FONT_SMALL, OLED_WHITE, T_CALB[0]);
+        print(6, 34, OLED_FONT_SMALL, OLED_WHITE, T_CALA[0]);
+        print(6, 48, OLED_FONT_SMALL, OLED_WHITE, V_CALREF[oval[O_CAL_REF]]);
+    } else if(cal_msg == 2) {
+        print(6, 20, OLED_FONT_SMALL, OLED_WHITE, T_CALC[0]);
+        print_num(6, 34, OLED_FONT_MEDIUM, OLED_WHITE, cal_new);
+        print(60, 38, OLED_FONT_SMALL, OLED_WHITE, T_MS[0]);
+        print_num(6, 52, OLED_FONT_SMALL, OLED_WHITE, cal_prev);
+    } else if(cal_msg == 3) {
+        print(6, 28, OLED_FONT_SMALL, OLED_WHITE, T_CALD[0]);
+    } else if(cal_msg == 4) {
+        print(6, 28, OLED_FONT_SMALL, OLED_WHITE, T_CALE[0]);
+    }
+    return 0;
+}
+
+function draw_notif() {
+    cls_oled(OLED_BLACK);
+    rect_oled(0, 0, 128, 64, 0, OLED_WHITE);
+    rect_oled(3, 3, 122, 58, 0, OLED_WHITE);
+    if(notif_id == 0) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[0]);
+    if(notif_id == 1) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[1]);
+    if(notif_id == 2) print(31, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[2]);
+    if(notif_id == 3) print(31, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[3]);
+    if(notif_id == 4) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[4]);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - MENU
+   ================================================================== */
+function draw_menu() {
+    cls_oled(OLED_BLACK);
+    dm_base = pg_first[m_page];
+    dm_n    = pg_count[m_page];
+
+    rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+    print(3, 2, OLED_FONT_SMALL, OLED_BLACK, PGN[m_page]);
+
+    /* page counter "current/total" - both digits rendered generically
+       now instead of the total being spelled out as the literal
+       characters "1" "2". That's what showed "14/12" once STEAL
+       EMBLEM took the page count past 12: the numerator kept up with
+       PAGE_N, the denominator never did. */
+    dm_c = 1;
+    if(m_page + 1 >= 10) {
+        putc_oled(dm_c, CH_ZERO + ((m_page + 1) / 10));
+        dm_c = dm_c + 1;
+    }
+    putc_oled(dm_c, CH_ZERO + ((m_page + 1) % 10));
+    dm_c = dm_c + 1;
+    putc_oled(dm_c, CH_SLASH);
+    dm_c = dm_c + 1;
+    if(PAGE_N >= 10) {
+        putc_oled(dm_c, CH_ZERO + (PAGE_N / 10));
+        dm_c = dm_c + 1;
+    }
+    putc_oled(dm_c, CH_ZERO + (PAGE_N % 10));
+    puts_oled(88, 2, OLED_FONT_SMALL, dm_c, OLED_BLACK);
+
+    /* window of 5 rows onto a page that may hold more than 5 items -
+       scroll keeps the selected item on screen, e.g. the merged
+       10-row SLOT EDIT page */
+    dm_scroll = 0;
+    if(dm_n > 5) {
+        dm_scroll = m_item - 4;
+        if(dm_scroll < 0) dm_scroll = 0;
+        if(dm_scroll > dm_n - 5) dm_scroll = dm_n - 5;
+    }
+
+    dm_i = 0;
+    while(dm_i < dm_n && dm_i < 5) {
+        dm_y  = 15 + (dm_i * 10);
+        dm_id = dm_base + dm_scroll + dm_i;
+        if(dm_scroll + dm_i == m_item) {
+            rect_oled(0, dm_y - 1, 120, 10, 1, OLED_WHITE);
+            print(3, dm_y, OLED_FONT_SMALL, OLED_BLACK, LBL[dm_id]);
+            draw_value(dm_id, 76, dm_y, OLED_BLACK);
+        } else {
+            print(3, dm_y, OLED_FONT_SMALL, OLED_WHITE, LBL[dm_id]);
+            draw_value(dm_id, 76, dm_y, OLED_WHITE);
+        }
+        dm_i = dm_i + 1;
+    }
+
+    rect_oled(121, 14, 5, 50, 0, OLED_WHITE);
+    rect_oled(121, 14 + ((m_item * 46) / dm_n), 5, (46 / dm_n) + 4, 1, OLED_WHITE);
+    return 0;
+}
+
+function draw_value(id, vx, vy, vc) {
+    dv_t = otyp[id];
+    if(dv_t == T_NUM)     print_num(vx, vy, OLED_FONT_SMALL, vc, oval[id]);
+    if(dv_t == T_ONOFF)   print(vx, vy, OLED_FONT_SMALL, vc, V_ONOFF[oval[id]]);
+    if(dv_t == T_BREATH)  print(vx, vy, OLED_FONT_SMALL, vc, V_BREATH[oval[id]]);
+    if(dv_t == T_TRIG)    print(vx, vy, OLED_FONT_SMALL, vc, V_TRIG[oval[id]]);
+    if(dv_t == T_TSMOD)   print(vx, vy, OLED_FONT_SMALL, vc, V_TSMOD[oval[id]]);
+    if(dv_t == T_SPINDIR) print(vx, vy, OLED_FONT_SMALL, vc, V_SPINDIR[oval[id]]);
+    if(dv_t == T_MACRO)   print(vx, vy, OLED_FONT_SMALL, vc, V_MACRO[oval[id]]);
+    if(dv_t == T_PRE)     print(vx, vy, OLED_FONT_SMALL, vc, V_PRE[oval[id]]);
+    if(dv_t == T_CAN)     print(vx, vy, OLED_FONT_SMALL, vc, V_CAN[oval[id]]);
+    if(dv_t == T_FIN)     print(vx, vy, OLED_FONT_SMALL, vc, V_FIN[oval[id]]);
+    if(dv_t == T_SPINAMT) print(vx, vy, OLED_FONT_SMALL, vc, V_SPINAMT[oval[id]]);
+    if(dv_t == T_SLOT)    print(vx, vy, OLED_FONT_SMALL, vc, V_SLOT[oval[id]]);
+    if(dv_t == T_PRESET)  print(vx, vy, OLED_FONT_SMALL, vc, V_PRESET[oval[id]]);
+    if(dv_t == T_CALREF)  print(vx, vy, OLED_FONT_SMALL, vc, V_CALREF[oval[id]]);
+    if(dv_t == T_CALGOT)  print(vx, vy, OLED_FONT_SMALL, vc, V_CALGOT[oval[id]]);
+    if(dv_t == T_SETRIG)  print(vx, vy, OLED_FONT_SMALL, vc, V_SETRIG[oval[id]]);
+    if(dv_t == T_ACT)     print(vx, vy, OLED_FONT_SMALL, vc, T_GO[0]);
+    return 0;
+}

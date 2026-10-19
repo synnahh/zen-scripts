@@ -1,0 +1,1970 @@
+/* ==================================================================
+   S C O P ' D
+   ------------------------------------------------------------------
+   Black Ops II  //  Cronus Zen / GPC                     v2.0
+   SNIPER BUILD  -  OFFLINE / BOT LOBBY / CAMPAIGN
+   ------------------------------------------------------------------
+   MENU        : hold L2 + tap OPTIONS
+   MASTER KILL : hold L2 + tap SHARE
+   ------------------------------------------------------------------
+   v2.0 - TRICKSHOT ENGINE REWRITE
+
+   The v1 macros were combos, and a combo is a straight line: every
+   wait() pushes the next thing later. That is why they felt slow and
+   why nothing happened "at the same time" - the spin could not start
+   until the cancel had finished.
+
+   v2 replaces them with a TIME-WINDOW SEQUENCER. A trickshot compiles
+   into a set of independent (start,end) windows, one per control
+   track, and ts_run() walks them every VM tick. Tracks overlap
+   freely, so the spin runs THROUGH the jump and the YY instead of
+   after them. Total length is now the longest track, not the sum.
+
+   NOTHING TOUCHES L2 OR R2. No auto-scope, no auto-fire. The macro
+   choreographs the movement and the cancels; you scope and you shoot.
+
+   Every gap is tunable on TS TIMING - see the README.
+   ------------------------------------------------------------------
+   GPC NOTES: no local variables - all working vars are top level,
+   prefixed by owner. Combos take set_val/wait only, no branching,
+   which is exactly why the sequencer lives in a function instead.
+   print() takes a data-section address, not a literal; no %d.
+
+   SCREEN BUDGET (128 x 64, small font 7px wide / 8px tall):
+     header y 0..11 | rows y 15,25,35,45,55 | labels x 3 (10 chars)
+     values x 76 (6 chars) | scrollbar x 121..125
+   ================================================================== */
+
+
+/* ---------------- BUTTON LAYOUT (edit me) ---------------- */
+define BTN_FIRE    = PS4_R2;
+define BTN_ADS     = PS4_L2;
+define BTN_MELEE   = PS4_R3;
+define BTN_BREATH  = PS4_L3;     /* sprint, and hold-breath while scoped */
+define BTN_JUMP    = PS4_CROSS;
+define BTN_CROUCH  = PS4_CIRCLE; /* tap = crouch, hold = prone */
+define BTN_RELOAD  = PS4_SQUARE;
+define BTN_SWAP    = PS4_TRIANGLE;
+define BTN_MENU    = PS4_OPTIONS;
+define BTN_MASTER  = PS4_SHARE;
+define BTN_TAC     = PS4_L1;
+define BTN_LETHAL  = PS4_R1;     /* combat axe for the AXE cancel */
+
+define STK_RX = PS4_RX;
+define STK_RY = PS4_RY;
+define STK_LX = PS4_LX;
+define STK_LY = PS4_LY;
+
+/* ---------------- MENU NAVIGATION ---------------- */
+define NAV_UP    = PS4_UP;
+define NAV_DOWN  = PS4_DOWN;
+define NAV_LEFT  = PS4_LEFT;
+define NAV_RIGHT = PS4_RIGHT;
+define NAV_PGL   = PS4_L1;
+define NAV_PGR   = PS4_R1;
+define NAV_OK    = PS4_CROSS;
+define NAV_DEF   = PS4_TRIANGLE;
+define NAV_EXIT  = PS4_CIRCLE;
+
+/* ---------------- OPTION IDs (also the LBL[] index) ---------------- */
+define O_AA_MODE    = 0;      /* p1  AIM ASSIST */
+define O_AA_POWER   = 1;
+define O_AA_SPEED   = 2;
+define O_AA_WHEN    = 3;
+define O_AA_HIP     = 4;
+
+define O_SNAP_ON    = 5;      /* p2  SCOPE IN */
+define O_SNAP_PULL  = 6;
+define O_SNAP_DLY   = 7;
+define O_SNAP_DIR   = 8;
+define O_SCOPE_BAIT = 9;
+
+define O_BREATH     = 10;     /* p3  BREATH */
+define O_BR_DLY     = 11;
+define O_BR_HOLD    = 12;
+define O_BR_REST    = 13;
+
+define O_QS_ON      = 14;     /* p4  QUICKSCOPE */
+define O_QS_DLY     = 15;
+define O_QS_HOLD    = 16;
+define O_RESCOPE    = 17;
+define O_RESC_DLY   = 18;
+
+define O_BOLT_ON    = 19;     /* p5  BOLT WORK */
+define O_BOLT_DLY   = 20;
+define O_RELCAN     = 21;
+
+define O_RF_ON      = 22;     /* p6  SEMI AUTO */
+define O_RF_HOLD    = 23;
+define O_RF_REST    = 24;
+define O_AR_ON      = 25;
+define O_AR_VERT    = 26;
+
+define O_DROP       = 27;     /* p7  MOVEMENT */
+define O_JUMPS      = 28;
+define O_SPRINT     = 29;
+define O_YYCAN      = 30;
+define O_DIVE       = 31;
+
+define O_HAIR       = 32;     /* p8  TRIGGERS */
+define O_TRIGPT     = 33;
+define O_MELEE      = 34;
+
+define O_TS_ON      = 35;     /* p9  TRICKSHOT */
+define O_TS_MOD     = 36;
+define O_TS_DIR     = 37;
+define O_TS_SPIN    = 38;
+
+define O_TAP        = 39;     /* p10 TS TIMING */
+define O_GAP        = 40;
+define O_LEAD       = 41;
+define O_PRE        = 42;
+define O_TAIL       = 43;
+
+define O_BIND_U     = 44;     /* p11 TS BINDS */
+define O_BIND_D     = 45;
+define O_BIND_L     = 46;
+define O_BIND_R     = 47;
+
+define O_MBIND_U    = 48;     /* p12 TS BINDS+ (modifier held) */
+define O_MBIND_D    = 49;
+define O_MBIND_L    = 50;
+define O_MBIND_R    = 51;
+
+define O_SLOT_SEL   = 52;     /* p13 SLOT EDIT */
+define O_SL_PRE     = 53;
+define O_SL_CAN     = 54;
+define O_SL_SPIN    = 55;
+define O_SL_POST    = 56;
+
+define O_IDLE_VIEW  = 57;     /* p14 DISPLAY */
+define O_ANIM       = 58;
+define O_RUMBLE     = 59;
+
+define O_PRESET     = 60;     /* p15 SYSTEM */
+define O_APPLY      = 61;
+define O_SAVE       = 62;
+define O_RESET      = 63;
+
+define OPT_N   = 64;
+define PAGE_N  = 15;
+define PG_SLOT = 12;          /* the page that edits custom slots */
+
+/* ---------------- VALUE TYPES ---------------- */
+define T_NUM     = 0;
+define T_ONOFF   = 1;
+define T_AAMODE  = 2;
+define T_WHEN    = 3;
+define T_DIR4    = 4;
+define T_BREATH  = 5;
+define T_TRIG    = 6;
+define T_TSMOD   = 7;
+define T_SPINDIR = 8;
+define T_IDLE    = 9;
+define T_MACRO   = 10;
+define T_PRE     = 11;
+define T_CANCEL  = 12;
+define T_SPINAMT = 13;
+define T_POST    = 14;
+define T_SLOT    = 15;
+define T_PRESET  = 16;
+define T_ACT     = 17;
+
+/* ---------------- SEQUENCER TRACKS ---------------- */
+define TR_SPIN   = 0;
+define TR_JUMP   = 1;
+define TR_CROUCH = 2;
+define TR_SPRINT = 3;
+define TR_SWAP_A = 4;    /* cancel tap 1 */
+define TR_SWAP_B = 5;    /* cancel tap 2 */
+define TR_SWAP_C = 6;    /* cancel tap 3 */
+define TR_RELOAD = 7;
+define TR_LETHAL = 8;
+define TR_MELEE  = 9;
+define TR_SWAP_P = 10;   /* pre-move swap-out */
+define TR_SWAP_F = 11;   /* finisher swap */
+define TR_N      = 12;
+
+/* ---------------- ASCII ---------------- */
+define CH_ZERO  = 48;
+define CH_MINUS = 45;
+define CH_SLASH = 47;
+
+
+/* ==================================================================
+   DATA SECTION
+   ================================================================== */
+const string LBL[] = {
+    "AA MODE",    "AA POWER",   "AA SPEED",   "AA WHEN",    "HIP ASSIST",
+    "SNAP AIM",   "SNAP PULL",  "SNAP DELAY", "SNAP DIR",   "SCOPE BAIT",
+    "MODE",       "DELAY x10",  "MAX HOLD",   "AUTO REST",
+    "ENABLE",     "QS DELAY",   "FIRE HOLD",  "AUTO RESCP", "RESCP DLY",
+    "BOLT CANCL", "BOLT DELAY", "RELOAD CAN",
+    "RAPID FIRE", "RF HOLD ms", "RF REST ms", "ANTI RECOL", "AR VERT",
+    "DROP SHOT",  "JUMP SHOT",  "AUTOSPRINT", "YY CANCEL",  "DIVE HELP",
+    "HAIR TRIG",  "TRIGGER PT", "TURBO MELE",
+    "ENABLE",     "MODIFIER",   "SPIN DIR",   "SPIN 360ms",
+    "TAP ms",     "GAP ms",     "LEAD x10",   "PRE x10",    "TAIL x10",
+    "D-PAD UP",   "D-PAD DOWN", "D-PAD LEFT", "D-PAD RGHT",
+    "M+ UP",      "M+ DOWN",    "M+ LEFT",    "M+ RIGHT",
+    "EDIT SLOT",  "PRE MOVE",   "CANCEL",     "SPIN",       "FINISH",
+    "IDLE VIEW",  "OLED ANIM",  "RUMBLE",
+    "PRESET",     "APPLY",      "SAVE ALL",   "RESET ALL"
+};
+
+const string PGN[] = {
+    "AIM ASSIST", "SCOPE IN",  "BREATH",    "QUICKSCOPE", "BOLT WORK",
+    "SEMI AUTO",  "MOVEMENT",  "TRIGGERS",  "TRICKSHOT",  "TS TIMING",
+    "TS BINDS",   "TS BINDS+", "SLOT EDIT", "DISPLAY",    "SYSTEM"
+};
+
+const string V_ONOFF[]   = { "OFF", "ON" };
+const string V_AAMODE[]  = { "OFF", "CIRCLE", "PULSE", "STRAFE", "FULL" };
+const string V_WHEN[]    = { "SCOPED", "FIRE", "S+F", "ALWAYS" };
+const string V_DIR4[]    = { "DOWN", "UP", "LEFT", "RIGHT" };
+const string V_BREATH[]  = { "OFF", "ALWAYS", "SMART", "DELAY" };
+const string V_TRIG[]    = { "OFF", "FIRE", "ADS", "BOTH" };
+const string V_TSMOD[]   = { "NONE", "L3", "SHARE", "L1" };
+const string V_SPINDIR[] = { "RIGHT", "LEFT", "AUTO" };
+const string V_IDLE[]    = { "AUTO", "SCOPE", "BINDS" };
+
+/* a macro is just a named (PRE, CANCEL, SPIN, FINISH) combination */
+const string V_MACRO[]   = { "OFF",    "180",    "360",    "540",
+                             "720",    "1080",   "YY180",  "YY360",
+                             "YY720",  "YYY360", "JMP360", "JMPYY",
+                             "DRP360", "DIV360", "TEMPER", "AXE360",
+                             "RLD360", "BARREL", "SLOTA",  "SLOTB",
+                             "SLOTC",  "SLOTD" };
+
+const string V_PRE[]     = { "NONE", "JUMP", "DIVE", "SWAP", "PRONE" };
+const string V_CANCEL[]  = { "NONE", "YY", "YYY", "RELOAD", "AXE", "MELEE" };
+const string V_SPINAMT[] = { "NONE", "180", "360", "540", "720", "1080" };
+const string V_POST[]    = { "NONE", "PRONE", "MELEE", "SWAP" };
+const string V_SLOT[]    = { "A", "B", "C", "D" };
+const string V_PRESET[]  = { "CUSTOM", "DSR-50", "BALLST", "SVU-AS",
+                             "XPR-50", "QSRUSH", "TRICK" };
+
+const string MSG[]  = { "RESET", "SAVED", "PRESET", "DISARM", "ARMED" };
+const string CHIP[] = { "AA", "BR", "QS", "RS", "BC", "TS", "RF" };
+const string DIRL[] = { "UP", "DOWN", "LEFT", "RIGHT" };
+
+const string T_TITLE[] = { "SCOP'D" };
+const string T_SUB[]   = { "S C O P ' D" };
+const string T_VER[]   = { "v2.0  ARMING" };
+const string T_OFF[]   = { "MODS OFF" };
+const string T_REARM[] = { "L2+SHARE = ARM" };
+const string T_GO[]    = { ">> GO" };
+const string T_AA[]    = { "AA" };
+const string T_BR[]    = { "BR" };
+const string T_QS[]    = { "QS" };
+
+/* Option metadata as DATA instead of 64 reg() calls. Same numbers,
+   a fraction of the bytecode - the compiler emits a table, not
+   448 argument pushes. Index = option ID. */
+const uint8 OMIN[] = {
+      0,   0,   4,   0,   0,   0,   0,   2,   0,   0,   0,   0,   5,   0,   0,   5,
+      2,   0,   5,   0,   5,   0,   0,  10,  10,   0,   0,   0,   0,   0,   0,   0,
+      0,   5,   0,   0,   0,   0,  20,   8,   8,   0,   2,   0,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0
+};
+const uint8 OMAX[] = {
+      4,  40,  40,   3,   1,   1,  40,  30,   3,   1,   3,  50,  60,   1,   1,  60,
+     20,   1,  60,   1,  80,   1,   1, 120, 120,   1, 100,   3,   3,   1,   1,   1,
+      1,  95,   1,   1,   3,   2, 120,  90,  90,  40,  40,  40,  21,  21,  21,  21,
+     21,  21,  21,  21,   3,   4,   5,   5,   3,   2,   1,   1,   6,   0,   0,   0
+};
+const uint8 OSTP[] = {
+      1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,
+      1,   1,   1,   1,   1,   1,   1,   2,   2,   1,   1,   1,   1,   1,   1,   1,
+      1,   5,   1,   1,   1,   1,   1,   2,   2,   1,   1,   1,   1,   1,   1,   1,
+      1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   1,   0,   0,   0
+};
+const uint8 OTYP[] = {
+      2,   0,   0,   3,   1,   1,   0,   0,   4,   1,   5,   0,   0,   1,   1,   0,
+      0,   1,   0,   1,   0,   1,   1,   0,   0,   1,   0,   6,   6,   1,   1,   1,
+      1,   0,   1,   1,   7,   8,   0,   0,   0,   0,   0,   0,  10,  10,  10,  10,
+     10,  10,  10,  10,  15,  11,  12,  13,  14,   9,   1,   1,  16,  17,  17,  17
+};
+const uint8 ODEF[] = {
+      1,  10,  10,   0,   0,   1,  12,   6,   0,   1,   1,   8,  35,   1,   0,  22,
+      8,   0,  30,   0,  42,   0,   0,  30,  30,   0,  16,   0,   0,   1,   0,   0,
+      1,  25,   0,   0,   1,   2,  60,  30,  30,   0,   8,   6,   0,   0,   0,   0,
+      0,   0,   0,   0,   0,   0,   0,   2,   0,   0,   1,   1,   0,   0,   0,   0
+};
+
+const uint8 SLOTDEF[] = { 1,1,2,0,  2,0,4,0,  0,4,2,1,  0,3,3,3 };
+const uint8 PGFIRST[] = { 0, 5, 10, 14, 19, 22, 27, 32, 35, 39, 44, 48, 52, 57, 60 };
+const uint8 PGCOUNT[] = { 5, 5, 4, 5, 3, 5, 5, 3, 4, 5, 4, 4, 5, 3, 4 };
+
+/* 64-step sine, -100..100. Gives real polar maths: rings, rays,
+   sweeps and orbits at any angle instead of 4 canned positions. */
+const int8 SIN64[] = {
+       0,   10,   20,   29,   38,   47,   56,   63,
+      71,   77,   83,   88,   92,   96,   98,  100,
+     100,  100,   98,   96,   92,   88,   83,   77,
+      71,   63,   56,   47,   38,   29,   20,   10,
+       0,  -10,  -20,  -29,  -38,  -47,  -56,  -63,
+     -71,  -77,  -83,  -88,  -92,  -96,  -98, -100,
+    -100, -100,  -98,  -96,  -92,  -88,  -83,  -77,
+     -71,  -63,  -56,  -47,  -38,  -29,  -20,  -10
+};
+
+
+/* ==================================================================
+   OPTION TABLE
+   ================================================================== */
+int oval[64];
+int odef[64];
+int omin[64];
+int omax[64];
+int ostp[64];
+int otyp[64];
+
+int pg_first[15];
+int pg_count[15];
+
+/* four user-composed trickshots, 4 components each */
+int ts_slot[16];
+
+
+/* ==================================================================
+   STATE
+   ================================================================== */
+int menu_open  = 0;
+int m_page     = 0;
+int m_item     = 0;
+int rep_t      = 0;
+int tick       = 0;
+int master_off = 0;
+
+int boot_t   = 0;
+int oled_t   = 0;
+int anim     = 0;
+int chip_x   = 0;
+int notif_t  = 0;
+int notif_id = 0;
+
+int ads_now  = 0;
+int fire_now = 0;
+int ads_t    = 0;
+int br_t     = 0;
+int br_want  = 0;
+
+int aa_on  = 0;
+int aa_x   = 0;
+int aa_y   = 0;
+int aa_lx  = 0;
+int aa_pw  = 0;
+int aa_d   = 0;
+int aa_sp  = 8;
+int aa_sp2 = 4;
+int aa_spl = 16;
+
+int snap_x  = 0;
+int snap_y  = 0;
+int snap_vx = 0;
+int snap_vy = 0;
+int snap_dl = 60;
+
+int rf_h   = 30;
+int rf_r   = 30;
+int qs_d   = 220;
+int qs_h   = 80;
+int resc_d = 300;
+int bolt_d = 300;
+int ar_ry  = 0;
+
+/* ---- trickshot sequencer ---- */
+int w_on[12];
+int w_off[12];
+int ts_live = 0;      /* 1 while a trickshot is playing   */
+int ts_t    = 0;      /* ms elapsed inside the sequence   */
+int ts_end  = 0;      /* total sequence length            */
+int ts_pow  = 100;    /* signed spin deflection           */
+int ts_mod  = 0;
+
+/* build-time scratch */
+int bd_t, bd_tap, bd_gap, bd_spin, bd_i, bd_max;
+int bd_pre, bd_can, bd_spn, bd_pst;
+
+/* ---- per-function working vars ---- */
+int mn_id;
+int aj_v;
+int ld_i;
+int sv_a, sv_b;
+int lo_c;
+int sl_last = -1;
+int sl_base = 0;
+int bt_r, bt_g, bt_x, bt_w;
+int id_r, id_s, id_i, id_sx, id_sy, id_amp, id_v;
+int dm_i, dm_y, dm_id, dm_base, dm_n, dm_c;
+int dv_t;
+int pp_sel;
+
+/* ---- OLED scene engine ---- */
+define FP    = 16;      /* fixed point shift for smooth sub-pixel motion */
+define NPART = 6;
+
+int ez_d;
+int i_ring, i_ray, i_p;
+int sc_x, sc_y, sc_r, sc_v, sc_a;
+int scan_y  = -20;
+int glitch_t = 0;
+
+int run_st  = 0;        /* 0 empty, 1 running, 2 hit */
+int run_x   = 0;        /* fixed point */
+int run_y   = 42;
+int run_dir = 1;
+int run_leg = 0;
+int spawn_t = 500;
+int lock_t  = 0;
+int fire_t  = 0;
+int dead_t  = 0;
+
+int cx_p, cy_p, cx_t, cy_t;   /* crosshair pos + target, fixed point */
+int ease_k = 5;
+
+int pa_x[6], pa_y[6], pa_vx[6], pa_vy[6], pa_l[6];
+int np_v, np_n, np_i, np_j, np_neg;
+int np_dig[6];
+
+
+/* ==================================================================
+   INIT
+   ================================================================== */
+init {
+    vm_tctrl(-8);
+    build_table();
+    build_pages();
+    load_defaults();
+    load_all();
+    boot_t = 0;
+    anim   = 0;
+}
+
+
+/* ==================================================================
+   MAIN
+   ================================================================== */
+main {
+    tick = get_rtime();
+
+    aa_pw  = oval[O_AA_POWER];
+    aa_d   = (aa_pw * 7) / 10;
+    aa_sp  = oval[O_AA_SPEED];
+    aa_sp2 = aa_sp / 2;
+    if(aa_sp2 < 2) aa_sp2 = 2;
+    aa_spl  = aa_sp * 2;
+    rf_h    = oval[O_RF_HOLD];
+    rf_r    = oval[O_RF_REST];
+    qs_d    = oval[O_QS_DLY]   * 10;
+    qs_h    = oval[O_QS_HOLD]  * 10;
+    resc_d  = oval[O_RESC_DLY] * 10;
+    bolt_d  = oval[O_BOLT_DLY] * 10;
+    snap_dl = oval[O_SNAP_DLY] * 10;
+
+    if(get_val(BTN_ADS) > 40) {
+        set_val(BTN_MENU, 0);
+        set_val(BTN_MASTER, 0);
+        if(event_press(BTN_MENU)) {
+            if(menu_open) {
+                save_all();
+                menu_open = 0;
+                flash(1);
+            } else {
+                menu_open = 1;
+                m_item = 0;
+                sl_last = -1;
+                stop_all();
+            }
+            buzz();
+        }
+        if(event_press(BTN_MASTER)) {
+            master_off = !master_off;
+            stop_all();
+            if(master_off) flash(3);
+            else flash(4);
+            buzz();
+        }
+    }
+
+    if(menu_open) {
+        menu_logic();
+        block_all();
+    } else {
+        if(!master_off) run_mods();
+    }
+
+    oled_t = oled_t + tick;
+    if(oled_t >= 50) {
+        oled_t = 0;
+        anim = anim + 1;
+        if(anim > 2000) anim = 0;
+        if(boot_t < 3600) {
+            boot_t = boot_t + 50;
+            draw_boot();
+        } else if(menu_open) {
+            draw_menu();
+        } else if(notif_t > 0) {
+            draw_notif();
+        } else {
+            draw_idle();
+        }
+    }
+    if(notif_t > 0) notif_t = notif_t - tick;
+}
+
+
+/* ==================================================================
+   MOD ENGINE
+   ================================================================== */
+function run_mods() {
+
+    if(oval[O_HAIR]) {
+        if(get_val(BTN_FIRE) >= oval[O_TRIGPT]) set_val(BTN_FIRE, 100);
+        else set_val(BTN_FIRE, 0);
+        if(get_val(BTN_ADS) >= oval[O_TRIGPT]) set_val(BTN_ADS, 100);
+    }
+
+    ads_now  = 0;
+    fire_now = 0;
+    if(get_val(BTN_ADS)  > 40) ads_now  = 1;
+    if(get_val(BTN_FIRE) > 40) fire_now = 1;
+
+    if(ads_now) ads_t = ads_t + tick;
+    else ads_t = 0;
+
+    trickshot();
+    ts_run();
+
+    /* ---------- AUTO HOLD BREATH ---------- */
+    br_want = 0;
+    if(oval[O_BREATH] > 0 && ads_now) {
+        if(oval[O_BREATH] == 1) br_want = 1;
+        if(oval[O_BREATH] == 2 && get_val(BTN_FIRE) > 5) br_want = 1;
+        if(oval[O_BREATH] == 3 && ads_t >= (oval[O_BR_DLY] * 10)) br_want = 1;
+    }
+    if(br_want) {
+        if(oval[O_BR_REST]) {
+            br_t = br_t + tick;
+            if(br_t <= (oval[O_BR_HOLD] * 100)) set_val(BTN_BREATH, 100);
+            else if(br_t > ((oval[O_BR_HOLD] * 100) + 600)) br_t = 0;
+        } else {
+            set_val(BTN_BREATH, 100);
+        }
+    } else {
+        br_t = 0;
+    }
+
+    /* ---------- ANTI-RECOIL (semi-auto snipers) ---------- */
+    if(oval[O_AR_ON] && fire_now) {
+        ar_ry = get_val(STK_RY);
+        if(oval[O_AR_VERT] != 0) {
+            if(ar_ry < oval[O_AR_VERT] && ar_ry > (0 - oval[O_AR_VERT]))
+                ar_ry = oval[O_AR_VERT];
+        }
+        set_val(STK_RY, clampv(ar_ry));
+    }
+
+    /* ---------- AIM ASSIST ENHANCER ---------- */
+    aa_on = 0;
+    if(oval[O_AA_MODE] > 0) {
+        if(oval[O_AA_WHEN] == 0 && ads_now) aa_on = 1;
+        if(oval[O_AA_WHEN] == 1 && fire_now) aa_on = 1;
+        if(oval[O_AA_WHEN] == 2 && ads_now && fire_now) aa_on = 1;
+        if(oval[O_AA_WHEN] == 3) aa_on = 1;
+        if(oval[O_AA_HIP] && fire_now && !ads_now) aa_on = 1;
+    }
+    if(oval[O_SCOPE_BAIT] && ads_now && ads_t < 400) aa_on = 1;
+    if(ts_live) aa_on = 0;          /* never fight the spin */
+
+    if(aa_on) {
+        if(oval[O_AA_MODE] == 1) combo_run(AA_Circle);
+        if(oval[O_AA_MODE] == 2) combo_run(AA_Pulse);
+        if(oval[O_AA_MODE] == 3) combo_run(AA_Strafe);
+        if(oval[O_AA_MODE] == 4) {
+            combo_run(AA_Circle);
+            combo_run(AA_Strafe);
+        }
+    } else {
+        combo_stop(AA_Circle);
+        combo_stop(AA_Pulse);
+        combo_stop(AA_Strafe);
+        aa_x = 0; aa_y = 0; aa_lx = 0;
+    }
+
+    if(!ts_live) {
+        if(aa_x != 0 || aa_y != 0 || snap_x != 0 || snap_y != 0) {
+            set_val(STK_RX, clampv(get_val(STK_RX) + aa_x + snap_x));
+            set_val(STK_RY, clampv(get_val(STK_RY) + aa_y + snap_y));
+        }
+        if(aa_lx != 0) set_val(STK_LX, clampv(get_val(STK_LX) + aa_lx));
+    }
+
+    /* ---------- SNAP AIM (vector resolved here, combos can't branch) ---------- */
+    snap_vx = 0;
+    snap_vy = 0;
+    if(oval[O_SNAP_DIR] == 0) snap_vy =     oval[O_SNAP_PULL];
+    if(oval[O_SNAP_DIR] == 1) snap_vy = 0 - oval[O_SNAP_PULL];
+    if(oval[O_SNAP_DIR] == 2) snap_vx = 0 - oval[O_SNAP_PULL];
+    if(oval[O_SNAP_DIR] == 3) snap_vx =     oval[O_SNAP_PULL];
+    if(oval[O_SNAP_ON] && event_press(BTN_ADS)) combo_run(AimSnap);
+    if(combo_running(AimSnap)) set_val(BTN_ADS, 100);
+
+    /* ---------- QUICKSCOPE ---------- */
+    if(oval[O_QS_ON] && event_press(BTN_ADS)) combo_run(QuickScope);
+
+    /* ---------- POST-SHOT ---------- */
+    if(ads_now && event_press(BTN_FIRE)) {
+        if(oval[O_RESCOPE]) combo_run(AutoRescope);
+        if(oval[O_BOLT_ON]) combo_run(BoltCancel);
+    }
+
+    if(oval[O_RF_ON] && fire_now) combo_run(RapidFire);
+    else combo_stop(RapidFire);
+
+    /* ---------- MOVEMENT (suspended during a trickshot) ---------- */
+    if(!ts_live) {
+        if(shot_trig(oval[O_DROP]))  combo_run(DropShot);
+        if(shot_hold(oval[O_JUMPS])) combo_run(JumpShot);
+        if(oval[O_SPRINT] && !ads_now && get_val(STK_LY) < -70) combo_run(AutoSprint);
+        if(oval[O_YYCAN] && get_val(BTN_SWAP)) combo_run(YYCancel);
+        if(oval[O_DIVE] && !ads_now && get_val(BTN_CROUCH) && get_val(STK_LY) < -70)
+            combo_run(DiveAssist);
+    }
+
+    if(oval[O_RELCAN] && event_press(BTN_RELOAD)) combo_run(ReloadCancel);
+    if(oval[O_MELEE] && get_val(BTN_MELEE)) combo_run(TurboMelee);
+    return 0;
+}
+
+
+/* ==================================================================
+   TRICKSHOT - INPUT
+   ================================================================== */
+function trickshot() {
+    if(!oval[O_TS_ON]) return 0;
+
+    /* modifier selects the second bind set and is swallowed so it
+       cannot leak into the game. Never map this to a grenade button:
+       BO2 cooks lethals on hold. */
+    ts_mod = 0;
+    if(oval[O_TS_MOD] == 1 && get_val(BTN_BREATH)) ts_mod = 1;
+    if(oval[O_TS_MOD] == 2 && get_val(BTN_MASTER)) ts_mod = 1;
+    if(oval[O_TS_MOD] == 3 && get_val(BTN_TAC))    ts_mod = 1;
+    if(ts_mod) {
+        if(oval[O_TS_MOD] == 1) set_val(BTN_BREATH, 0);
+        if(oval[O_TS_MOD] == 2) set_val(BTN_MASTER, 0);
+        if(oval[O_TS_MOD] == 3) set_val(BTN_TAC, 0);
+    }
+
+    if(ts_mod) {
+        ts_check(oval[O_MBIND_U], NAV_UP,    0);
+        ts_check(oval[O_MBIND_D], NAV_DOWN,  0);
+        ts_check(oval[O_MBIND_L], NAV_LEFT,  1);
+        ts_check(oval[O_MBIND_R], NAV_RIGHT, 2);
+    } else {
+        ts_check(oval[O_BIND_U], NAV_UP,    0);
+        ts_check(oval[O_BIND_D], NAV_DOWN,  0);
+        ts_check(oval[O_BIND_L], NAV_LEFT,  1);
+        ts_check(oval[O_BIND_R], NAV_RIGHT, 2);
+    }
+    return 0;
+}
+
+/* A bound direction is swallowed; an unbound one passes through so
+   you keep scorestreaks on the directions you don't use.
+   Pressing a bound direction mid-sequence aborts it. */
+function ts_check(mac, btn, dhint) {
+    if(mac > 0) {
+        set_val(btn, 0);
+        if(event_press(btn)) {
+            if(ts_live) {
+                ts_live = 0;
+            } else {
+                ts_fire(mac, dhint);
+            }
+        }
+    }
+    return 0;
+}
+
+/* dhint: 1 = pressed LEFT, 2 = pressed RIGHT (used by SPIN DIR AUTO) */
+function ts_fire(mac, dhint) {
+    ts_pow = 100;
+    if(oval[O_TS_DIR] == 1) ts_pow = -100;
+    if(oval[O_TS_DIR] == 2) {
+        if(dhint == 1) ts_pow = -100;
+    }
+
+    /* every library macro is a named (PRE, CANCEL, SPIN, FINISH) tuple.
+       Slots A-D read whatever you composed on the SLOT EDIT page. */
+    bd_pre = 0; bd_can = 0; bd_spn = 2; bd_pst = 0;
+
+    if(mac == 1)  { bd_spn = 1; }                                  /* 180    */
+    if(mac == 2)  { bd_spn = 2; }                                  /* 360    */
+    if(mac == 3)  { bd_spn = 3; }                                  /* 540    */
+    if(mac == 4)  { bd_spn = 4; }                                  /* 720    */
+    if(mac == 5)  { bd_spn = 5; }                                  /* 1080   */
+    if(mac == 6)  { bd_can = 1; bd_spn = 1; }                      /* YY180  */
+    if(mac == 7)  { bd_can = 1; bd_spn = 2; }                      /* YY360  */
+    if(mac == 8)  { bd_can = 1; bd_spn = 4; }                      /* YY720  */
+    if(mac == 9)  { bd_can = 2; bd_spn = 2; }                      /* YYY360 */
+    if(mac == 10) { bd_pre = 1; bd_spn = 2; }                      /* JMP360 */
+    if(mac == 11) { bd_pre = 1; bd_can = 1; bd_spn = 2; }          /* JMPYY  */
+    if(mac == 12) { bd_spn = 2; bd_pst = 1; }                      /* DRP360 */
+    if(mac == 13) { bd_pre = 2; bd_spn = 2; }                      /* DIV360 */
+    if(mac == 14) { bd_pre = 1; bd_can = 1; bd_spn = 2; bd_pst = 3; } /* TEMPER */
+    if(mac == 15) { bd_can = 4; bd_spn = 2; }                      /* AXE360 */
+    if(mac == 16) { bd_can = 3; bd_spn = 2; }                      /* RLD360 */
+    if(mac == 17) { bd_pre = 3; bd_can = 1; bd_spn = 2; }          /* BARREL */
+    if(mac >= 18) {
+        sl_base = (mac - 18) * 4;
+        bd_pre = ts_slot[sl_base];
+        bd_can = ts_slot[sl_base + 1];
+        bd_spn = ts_slot[sl_base + 2];
+        bd_pst = ts_slot[sl_base + 3];
+    }
+
+    ts_build();
+    buzz();
+    return 0;
+}
+
+
+/* ==================================================================
+   TRICKSHOT - COMPILER
+   Turns (PRE, CANCEL, SPIN, FINISH) into overlapping time windows.
+   Tracks are independent, so the spin runs THROUGH the cancels.
+   ================================================================== */
+function ts_build() {
+    bd_i = 0;
+    while(bd_i < TR_N) {
+        w_on[bd_i]  = -1;
+        w_off[bd_i] = -1;
+        bd_i = bd_i + 1;
+    }
+
+    bd_tap = oval[O_TAP];
+    bd_gap = oval[O_GAP];
+    bd_t   = 0;
+
+    /* ---- PRE MOVE ---- */
+    if(bd_pre == 1) {                       /* JUMP */
+        w_on[TR_JUMP] = 0;
+        w_off[TR_JUMP] = bd_tap;
+        bd_t = oval[O_PRE] * 10;
+    }
+    if(bd_pre == 2) {                       /* DIVE: sprint then prone */
+        w_on[TR_SPRINT] = 0;
+        w_off[TR_SPRINT] = oval[O_PRE] * 10;
+        w_on[TR_CROUCH] = oval[O_PRE] * 10;
+        w_off[TR_CROUCH] = (oval[O_PRE] * 10) + 260;
+        bd_t = (oval[O_PRE] * 10) + bd_gap;
+    }
+    if(bd_pre == 3) {                       /* SWAP OUT (barrel roll) */
+        w_on[TR_SWAP_P] = 0;
+        w_off[TR_SWAP_P] = bd_tap;
+        w_on[TR_SPRINT] = bd_tap + bd_gap;
+        w_off[TR_SPRINT] = bd_tap + bd_gap + (oval[O_PRE] * 10);
+        bd_t = bd_tap + bd_gap + (oval[O_PRE] * 10);
+    }
+    if(bd_pre == 4) {                       /* PRONE */
+        w_on[TR_CROUCH] = 0;
+        w_off[TR_CROUCH] = 340;
+        bd_t = bd_gap;
+    }
+
+    /* ---- CANCEL ---- */
+    if(bd_can == 1) {                       /* YY */
+        w_on[TR_SWAP_A]  = bd_t;
+        w_off[TR_SWAP_A] = bd_t + bd_tap;
+        w_on[TR_SWAP_B]  = bd_t + bd_tap + bd_gap;
+        w_off[TR_SWAP_B] = bd_t + bd_tap + bd_gap + bd_tap;
+        bd_t = w_off[TR_SWAP_B];
+    }
+    if(bd_can == 2) {                       /* YYY */
+        w_on[TR_SWAP_A]  = bd_t;
+        w_off[TR_SWAP_A] = bd_t + bd_tap;
+        w_on[TR_SWAP_B]  = bd_t + bd_tap + bd_gap;
+        w_off[TR_SWAP_B] = bd_t + bd_tap + bd_gap + bd_tap;
+        w_on[TR_SWAP_C]  = w_off[TR_SWAP_B] + bd_gap;
+        w_off[TR_SWAP_C] = w_off[TR_SWAP_B] + bd_gap + bd_tap;
+        bd_t = w_off[TR_SWAP_C];
+    }
+    if(bd_can == 3) {                       /* RELOAD then YY-cancel it */
+        w_on[TR_RELOAD]  = bd_t;
+        w_off[TR_RELOAD] = bd_t + bd_tap;
+        w_on[TR_SWAP_A]  = bd_t + bd_tap + (bd_gap * 3);
+        w_off[TR_SWAP_A] = w_on[TR_SWAP_A] + bd_tap;
+        w_on[TR_SWAP_B]  = w_off[TR_SWAP_A] + bd_gap;
+        w_off[TR_SWAP_B] = w_off[TR_SWAP_A] + bd_gap + bd_tap;
+        bd_t = w_off[TR_SWAP_B];
+    }
+    if(bd_can == 4) {                       /* AXE then YY-cancel the throw */
+        w_on[TR_LETHAL]  = bd_t;
+        w_off[TR_LETHAL] = bd_t + bd_tap;
+        w_on[TR_SWAP_A]  = bd_t + bd_tap + (bd_gap * 2);
+        w_off[TR_SWAP_A] = w_on[TR_SWAP_A] + bd_tap;
+        w_on[TR_SWAP_B]  = w_off[TR_SWAP_A] + bd_gap;
+        w_off[TR_SWAP_B] = w_off[TR_SWAP_A] + bd_gap + bd_tap;
+        bd_t = w_off[TR_SWAP_B];
+    }
+    if(bd_can == 5) {                       /* MELEE then YY-cancel */
+        w_on[TR_MELEE]   = bd_t;
+        w_off[TR_MELEE]  = bd_t + bd_tap;
+        w_on[TR_SWAP_A]  = bd_t + bd_tap + (bd_gap * 2);
+        w_off[TR_SWAP_A] = w_on[TR_SWAP_A] + bd_tap;
+        w_on[TR_SWAP_B]  = w_off[TR_SWAP_A] + bd_gap;
+        w_off[TR_SWAP_B] = w_off[TR_SWAP_A] + bd_gap + bd_tap;
+        bd_t = w_off[TR_SWAP_B];
+    }
+
+    /* ---- SPIN ---- runs in parallel from LEAD onwards ---- */
+    bd_spin = 0;
+    if(bd_spn == 1) bd_spin = (oval[O_TS_SPIN] * 10) / 2;
+    if(bd_spn == 2) bd_spin =  oval[O_TS_SPIN] * 10;
+    if(bd_spn == 3) bd_spin = (oval[O_TS_SPIN] * 15);
+    if(bd_spn == 4) bd_spin =  oval[O_TS_SPIN] * 20;
+    if(bd_spn == 5) bd_spin =  oval[O_TS_SPIN] * 30;
+    if(bd_spin > 3600) bd_spin = 3600;
+    if(bd_spin > 0) {
+        w_on[TR_SPIN]  = oval[O_LEAD] * 10;
+        w_off[TR_SPIN] = (oval[O_LEAD] * 10) + bd_spin;
+    }
+
+    /* ---- FINISH ---- after both the cancels and the spin ---- */
+    if(w_off[TR_SPIN] > bd_t) bd_t = w_off[TR_SPIN];
+    if(bd_pst == 1) {                       /* PRONE */
+        w_on[TR_CROUCH]  = bd_t;
+        w_off[TR_CROUCH] = bd_t + 340;
+    }
+    if(bd_pst == 2) {                       /* MELEE */
+        w_on[TR_MELEE]  = bd_t;
+        w_off[TR_MELEE] = bd_t + bd_tap;
+    }
+    if(bd_pst == 3) {                       /* SWAP to secondary */
+        w_on[TR_SWAP_F]  = bd_t;
+        w_off[TR_SWAP_F] = bd_t + bd_tap;
+    }
+
+    /* ---- total length = longest track + tail ---- */
+    bd_max = 0;
+    bd_i = 0;
+    while(bd_i < TR_N) {
+        if(w_off[bd_i] > bd_max) bd_max = w_off[bd_i];
+        bd_i = bd_i + 1;
+    }
+    ts_end  = bd_max + (oval[O_TAIL] * 10);
+    ts_t    = 0;
+    ts_live = 1;
+    return 0;
+}
+
+function ts_win(i) {
+    if(w_on[i] < 0) return 0;
+    if(ts_t >= w_on[i] && ts_t < w_off[i]) return 1;
+    return 0;
+}
+
+/* Plays the compiled windows. Never touches L2 or R2 - you scope and
+   you shoot; this only choreographs movement and cancels. */
+function ts_run() {
+    if(!ts_live) return 0;
+
+    ts_t = ts_t + tick;
+    if(ts_t >= ts_end) {
+        ts_live = 0;
+        return 0;
+    }
+
+    if(ts_win(TR_SPIN))   set_val(STK_RX, ts_pow);
+    if(ts_win(TR_JUMP))   set_val(BTN_JUMP, 100);
+    if(ts_win(TR_CROUCH)) set_val(BTN_CROUCH, 100);
+    if(ts_win(TR_SPRINT)) set_val(BTN_BREATH, 100);
+    if(ts_win(TR_RELOAD)) set_val(BTN_RELOAD, 100);
+    if(ts_win(TR_LETHAL)) set_val(BTN_LETHAL, 100);
+    if(ts_win(TR_MELEE))  set_val(BTN_MELEE, 100);
+    if(ts_win(TR_SWAP_A) || ts_win(TR_SWAP_B) || ts_win(TR_SWAP_C)
+       || ts_win(TR_SWAP_P) || ts_win(TR_SWAP_F)) set_val(BTN_SWAP, 100);
+    return 0;
+}
+
+
+function shot_trig(m) {
+    if(m == 1 && event_press(BTN_FIRE)) return 1;
+    if(m == 2 && event_press(BTN_ADS))  return 1;
+    if(m == 3) {
+        if(event_press(BTN_FIRE)) return 1;
+        if(event_press(BTN_ADS))  return 1;
+    }
+    return 0;
+}
+
+function shot_hold(m) {
+    if(m == 1 && get_val(BTN_FIRE) > 40) return 1;
+    if(m == 2 && get_val(BTN_ADS)  > 40) return 1;
+    if(m == 3) {
+        if(get_val(BTN_FIRE) > 40) return 1;
+        if(get_val(BTN_ADS)  > 40) return 1;
+    }
+    return 0;
+}
+
+function clampv(v) {
+    if(v >  100) return  100;
+    if(v < -100) return -100;
+    return v;
+}
+
+
+/* ==================================================================
+   COMBOS  (sniper aids only - trickshots are the sequencer now)
+   ================================================================== */
+combo AA_Circle {
+    aa_x = aa_pw;    aa_y = 0;        wait(aa_sp);
+    aa_x = aa_d;     aa_y = aa_d;     wait(aa_sp);
+    aa_x = 0;        aa_y = aa_pw;    wait(aa_sp);
+    aa_x = 0-aa_d;   aa_y = aa_d;     wait(aa_sp);
+    aa_x = 0-aa_pw;  aa_y = 0;        wait(aa_sp);
+    aa_x = 0-aa_d;   aa_y = 0-aa_d;   wait(aa_sp);
+    aa_x = 0;        aa_y = 0-aa_pw;  wait(aa_sp);
+    aa_x = aa_d;     aa_y = 0-aa_d;   wait(aa_sp);
+}
+
+combo AA_Pulse {
+    aa_x = aa_pw;    aa_y = 0;  wait(aa_sp);
+    aa_x = 0;        aa_y = 0;  wait(aa_sp2);
+    aa_x = 0-aa_pw;  aa_y = 0;  wait(aa_sp);
+    aa_x = 0;        aa_y = 0;  wait(aa_sp2);
+}
+
+combo AA_Strafe {
+    aa_lx = aa_pw;    wait(aa_spl);
+    aa_lx = 0-aa_pw;  wait(aa_spl);
+}
+
+combo AimSnap {
+    set_val(BTN_ADS, 100);
+    wait(snap_dl);
+    set_val(BTN_ADS, 0);
+    wait(40);
+    set_val(BTN_ADS, 100);
+    snap_x = snap_vx;
+    snap_y = snap_vy;
+    wait(70);
+    snap_x = 0;
+    snap_y = 0;
+    set_val(BTN_ADS, 100);
+    wait(30);
+}
+
+combo QuickScope {
+    set_val(BTN_ADS, 100);
+    wait(qs_d);
+    set_val(BTN_ADS, 100);
+    set_val(BTN_FIRE, 100);
+    wait(qs_h);
+    set_val(BTN_ADS, 0);
+    set_val(BTN_FIRE, 0);
+    wait(90);
+}
+
+combo AutoRescope {
+    set_val(BTN_ADS, 0);
+    wait(resc_d);
+    set_val(BTN_ADS, 100);
+    wait(250);
+}
+
+combo BoltCancel {
+    wait(bolt_d);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+}
+
+combo RapidFire {
+    set_val(BTN_FIRE, 100);
+    wait(rf_h);
+    set_val(BTN_FIRE, 0);
+    wait(rf_r);
+    set_val(BTN_FIRE, 0);
+}
+
+combo DropShot {
+    set_val(BTN_CROUCH, 100);
+    wait(400);
+    set_val(BTN_CROUCH, 0);
+    wait(200);
+}
+
+combo JumpShot {
+    set_val(BTN_JUMP, 100);
+    wait(70);
+    set_val(BTN_JUMP, 0);
+    wait(330);
+}
+
+combo AutoSprint {
+    set_val(BTN_BREATH, 100);
+    wait(130);
+    set_val(BTN_BREATH, 0);
+    wait(90);
+}
+
+combo YYCancel {
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(200);
+}
+
+combo DiveAssist {
+    set_val(BTN_BREATH, 100);
+    wait(120);
+    set_val(BTN_CROUCH, 100);
+    wait(300);
+    set_val(BTN_CROUCH, 0);
+    wait(400);
+}
+
+combo ReloadCancel {
+    set_val(BTN_RELOAD, 100);
+    wait(60);
+    set_val(BTN_RELOAD, 0);
+    wait(680);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+    set_val(BTN_SWAP, 100);
+    wait(50);
+    set_val(BTN_SWAP, 0);
+    wait(50);
+}
+
+combo TurboMelee {
+    set_val(BTN_MELEE, 100);
+    wait(120);
+    set_val(BTN_MELEE, 0);
+    wait(120);
+}
+
+combo Buzz {
+    set_rumble(RUMBLE_A, 60);
+    wait(90);
+    reset_rumble();
+}
+
+function buzz() {
+    if(oval[O_RUMBLE]) combo_run(Buzz);
+    return 0;
+}
+
+function stop_all() {
+    combo_stop(AA_Circle);   combo_stop(AA_Pulse);   combo_stop(AA_Strafe);
+    combo_stop(AimSnap);     combo_stop(QuickScope); combo_stop(AutoRescope);
+    combo_stop(BoltCancel);  combo_stop(RapidFire);  combo_stop(DropShot);
+    combo_stop(JumpShot);    combo_stop(AutoSprint); combo_stop(YYCancel);
+    combo_stop(DiveAssist);  combo_stop(ReloadCancel); combo_stop(TurboMelee);
+    ts_live = 0;
+    aa_x = 0; aa_y = 0; aa_lx = 0;
+    snap_x = 0; snap_y = 0;
+    br_t = 0; ads_t = 0;
+    return 0;
+}
+
+function block_all() {
+    set_val(PS4_LX,0);  set_val(PS4_LY,0);  set_val(PS4_RX,0);  set_val(PS4_RY,0);
+    set_val(PS4_R1,0);  set_val(PS4_R2,0);  set_val(PS4_R3,0);
+    set_val(PS4_L1,0);  set_val(PS4_L2,0);  set_val(PS4_L3,0);
+    set_val(PS4_UP,0);  set_val(PS4_DOWN,0);
+    set_val(PS4_LEFT,0);set_val(PS4_RIGHT,0);
+    set_val(PS4_TRIANGLE,0); set_val(PS4_CIRCLE,0);
+    set_val(PS4_CROSS,0);    set_val(PS4_SQUARE,0);
+    set_val(PS4_OPTIONS,0);  set_val(PS4_SHARE,0);
+    set_val(PS4_TOUCH,0);    set_val(PS4_PS,0);
+    return 0;
+}
+
+
+/* ==================================================================
+   MENU LOGIC
+   ================================================================== */
+function menu_logic() {
+    if(event_press(NAV_PGL)) {
+        m_page = m_page - 1;
+        if(m_page < 0) m_page = PAGE_N - 1;
+        m_item = 0;
+        sl_last = -1;
+        buzz();
+    }
+    if(event_press(NAV_PGR)) {
+        m_page = m_page + 1;
+        if(m_page >= PAGE_N) m_page = 0;
+        m_item = 0;
+        sl_last = -1;
+        buzz();
+    }
+    if(event_press(NAV_UP)) {
+        m_item = m_item - 1;
+        if(m_item < 0) m_item = pg_count[m_page] - 1;
+    }
+    if(event_press(NAV_DOWN)) {
+        m_item = m_item + 1;
+        if(m_item >= pg_count[m_page]) m_item = 0;
+    }
+
+    mn_id = pg_first[m_page] + m_item;
+
+    if(event_press(NAV_LEFT))  { adjust(mn_id, -1); rep_t = 0; }
+    if(event_press(NAV_RIGHT)) { adjust(mn_id,  1); rep_t = 0; }
+    if(event_press(NAV_OK))    { adjust(mn_id,  1); rep_t = 0; buzz(); }
+
+    if(get_val(NAV_LEFT) && get_ptime(NAV_LEFT) > 380) {
+        rep_t = rep_t + tick;
+        if(rep_t >= 55) { rep_t = 0; adjust(mn_id, -3); }
+    }
+    if(get_val(NAV_RIGHT) && get_ptime(NAV_RIGHT) > 380) {
+        rep_t = rep_t + tick;
+        if(rep_t >= 55) { rep_t = 0; adjust(mn_id, 3); }
+    }
+
+    if(event_press(NAV_DEF)) {
+        if(otyp[mn_id] != T_ACT) oval[mn_id] = odef[mn_id];
+        buzz();
+    }
+
+    if(event_press(NAV_EXIT)) {
+        save_all();
+        menu_open = 0;
+        flash(1);
+        buzz();
+    }
+
+    slot_sync();
+    return 0;
+}
+
+/* The SLOT EDIT page shows one slot at a time. Changing EDIT SLOT
+   loads that slot into the four editor lines; anything else stores
+   the editor lines back into the selected slot. */
+function slot_sync() {
+    if(m_page == PG_SLOT) {
+        sl_base = oval[O_SLOT_SEL] * 4;
+        if(sl_last != oval[O_SLOT_SEL]) {
+            sl_last = oval[O_SLOT_SEL];
+            oval[O_SL_PRE]  = ts_slot[sl_base];
+            oval[O_SL_CAN]  = ts_slot[sl_base + 1];
+            oval[O_SL_SPIN] = ts_slot[sl_base + 2];
+            oval[O_SL_POST] = ts_slot[sl_base + 3];
+        } else {
+            ts_slot[sl_base]     = oval[O_SL_PRE];
+            ts_slot[sl_base + 1] = oval[O_SL_CAN];
+            ts_slot[sl_base + 2] = oval[O_SL_SPIN];
+            ts_slot[sl_base + 3] = oval[O_SL_POST];
+        }
+    }
+    return 0;
+}
+
+function adjust(id, dir) {
+    if(otyp[id] == T_ACT) {
+        do_action(id);
+    } else {
+        if(otyp[id] == T_ONOFF) {
+            oval[id] = !oval[id];
+        } else {
+            aj_v = oval[id] + (dir * ostp[id]);
+            if(aj_v > omax[id]) aj_v = omin[id];
+            if(aj_v < omin[id]) aj_v = omax[id];
+            oval[id] = aj_v;
+        }
+    }
+    return 0;
+}
+
+function do_action(id) {
+    if(id == O_APPLY) { apply_preset(); flash(2); }
+    if(id == O_SAVE)  { save_all();     flash(1); }
+    if(id == O_RESET) { load_defaults(); save_all(); flash(0); }
+    buzz();
+    return 0;
+}
+
+function flash(n) {
+    notif_id = n;
+    notif_t  = 900;
+    return 0;
+}
+
+
+/* ==================================================================
+   PRESETS
+   ================================================================== */
+function apply_preset() {
+    pp_sel = oval[O_PRESET];
+
+    if(pp_sel == 1) {                   /* DSR-50 */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=26; oval[O_BREATH]=1;
+        oval[O_BOLT_ON]=1; oval[O_BOLT_DLY]=45;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=9;
+        oval[O_RF_ON]=0;  oval[O_AR_ON]=0;
+    }
+    if(pp_sel == 2) {                   /* BALLISTA */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=21; oval[O_BREATH]=1;
+        oval[O_BOLT_ON]=1; oval[O_BOLT_DLY]=38;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=10;
+        oval[O_RF_ON]=0;  oval[O_AR_ON]=0;
+    }
+    if(pp_sel == 3) {                   /* SVU-AS */
+        oval[O_QS_ON]=0;  oval[O_BREATH]=2; oval[O_BOLT_ON]=0;
+        oval[O_RF_ON]=1;  oval[O_RF_HOLD]=30; oval[O_RF_REST]=30;
+        oval[O_AR_ON]=1;  oval[O_AR_VERT]=16;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=11;
+    }
+    if(pp_sel == 4) {                   /* XPR-50 */
+        oval[O_QS_ON]=0;  oval[O_BREATH]=2; oval[O_BOLT_ON]=0;
+        oval[O_RF_ON]=1;  oval[O_RF_HOLD]=26; oval[O_RF_REST]=26;
+        oval[O_AR_ON]=1;  oval[O_AR_VERT]=14;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=11;
+    }
+    if(pp_sel == 5) {                   /* QS RUSH */
+        oval[O_QS_ON]=1;  oval[O_QS_DLY]=18; oval[O_QS_HOLD]=8;
+        oval[O_RESCOPE]=1; oval[O_RESC_DLY]=28;
+        oval[O_BREATH]=2; oval[O_HAIR]=1; oval[O_TRIGPT]=20;
+        oval[O_JUMPS]=1;  oval[O_SNAP_ON]=1; oval[O_SCOPE_BAIT]=1;
+        oval[O_AA_MODE]=4; oval[O_AA_POWER]=13;
+    }
+    if(pp_sel == 6) {                   /* TRICK */
+        oval[O_TS_ON]=1;  oval[O_TS_SPIN]=60; oval[O_TS_DIR]=2;
+        oval[O_TS_MOD]=1;
+        oval[O_BIND_U]=2;  oval[O_BIND_D]=7;
+        oval[O_BIND_L]=12; oval[O_BIND_R]=10;
+        oval[O_MBIND_U]=4; oval[O_MBIND_D]=5;
+        oval[O_MBIND_L]=14; oval[O_MBIND_R]=9;
+        oval[O_BREATH]=1;
+        oval[O_AA_MODE]=1; oval[O_AA_POWER]=10;
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   TABLE SETUP
+   ================================================================== */
+function build_table() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        omin[ld_i] = OMIN[ld_i];
+        omax[ld_i] = OMAX[ld_i];
+        ostp[ld_i] = OSTP[ld_i];
+        otyp[ld_i] = OTYP[ld_i];
+        odef[ld_i] = ODEF[ld_i];
+        ld_i = ld_i + 1;
+    }
+    return 0;
+}
+
+function build_pages() {
+    ld_i = 0;
+    while(ld_i < PAGE_N) {
+        pg_first[ld_i] = PGFIRST[ld_i];
+        pg_count[ld_i] = PGCOUNT[ld_i];
+        ld_i = ld_i + 1;
+    }
+    return 0;
+}
+
+function load_defaults() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        oval[ld_i] = odef[ld_i];
+        ld_i = ld_i + 1;
+    }
+    /* stock slots: A=jump YY 360, B=dive 720, C=axe 360 prone, D=reload 540 */
+    ld_i = 0;
+    while(ld_i < 16) {
+        ts_slot[ld_i] = SLOTDEF[ld_i];
+        ld_i = ld_i + 1;
+    }
+    sl_last = -1;
+    return 0;
+}
+
+function clamp_all() {
+    ld_i = 0;
+    while(ld_i < OPT_N) {
+        if(otyp[ld_i] != T_ACT) {
+            if(oval[ld_i] > omax[ld_i]) oval[ld_i] = omax[ld_i];
+            if(oval[ld_i] < omin[ld_i]) oval[ld_i] = omin[ld_i];
+        }
+        ld_i = ld_i + 1;
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   PERSISTENT STORAGE
+   The Zen has 64 SPVARs per slot, so packing stays loose and legible.
+   A pvar is a signed 16-bit int: every pack below stays under 32767.
+   get_pvar hits EEPROM, so it is only ever called from init.
+   ================================================================== */
+function bitof(bv, bb) {
+    return (bv >> bb) & 1;
+}
+
+function save_all() {
+    sv_a = oval[O_AA_HIP]
+         + (oval[O_SNAP_ON]    << 1)
+         + (oval[O_SCOPE_BAIT] << 2)
+         + (oval[O_BR_REST]    << 3)
+         + (oval[O_QS_ON]      << 4)
+         + (oval[O_RESCOPE]    << 5)
+         + (oval[O_BOLT_ON]    << 6)
+         + (oval[O_RELCAN]     << 7)
+         + (oval[O_RF_ON]      << 8)
+         + (oval[O_AR_ON]      << 9)
+         + (oval[O_SPRINT]     << 10)
+         + (oval[O_YYCAN]      << 11)
+         + (oval[O_DIVE]       << 12)
+         + (oval[O_HAIR]       << 13);
+    set_pvar(SPVAR_1, sv_a);
+
+    sv_b = oval[O_TS_ON]
+         + (oval[O_ANIM]   << 1)
+         + (oval[O_RUMBLE] << 2)
+         + (oval[O_MELEE]  << 3);
+    set_pvar(SPVAR_2, sv_b);
+
+    set_pvar(SPVAR_3, oval[O_AA_MODE]
+                    + (oval[O_AA_WHEN]  << 3)
+                    + (oval[O_SNAP_DIR] << 5)
+                    + (oval[O_BREATH]   << 7)
+                    + (oval[O_DROP]     << 9)
+                    + (oval[O_JUMPS]    << 11));
+    set_pvar(SPVAR_4, oval[O_TS_MOD]
+                    + (oval[O_TS_DIR]    << 2)
+                    + (oval[O_IDLE_VIEW] << 4)
+                    + (oval[O_PRESET]    << 6));
+
+    set_pvar(SPVAR_5,  oval[O_AA_POWER]  + (oval[O_AA_SPEED] << 7));
+    set_pvar(SPVAR_6,  oval[O_SNAP_PULL] + (oval[O_SNAP_DLY] << 7));
+    set_pvar(SPVAR_7,  oval[O_BR_DLY]    + (oval[O_BR_HOLD]  << 7));
+    set_pvar(SPVAR_8,  oval[O_QS_DLY]    + (oval[O_QS_HOLD]  << 7));
+    set_pvar(SPVAR_9,  oval[O_RESC_DLY]  + (oval[O_BOLT_DLY] << 7));
+    set_pvar(SPVAR_10, oval[O_RF_HOLD]   + (oval[O_RF_REST]  << 7));
+    set_pvar(SPVAR_11, oval[O_AR_VERT]   + (oval[O_TRIGPT]   << 7));
+
+    set_pvar(SPVAR_12, oval[O_TS_SPIN]   + (91 << 7));      /* 91 = magic */
+    set_pvar(SPVAR_13, oval[O_TAP]       + (oval[O_GAP]  << 7));
+    set_pvar(SPVAR_14, oval[O_LEAD]      + (oval[O_PRE]  << 6));
+    set_pvar(SPVAR_15, oval[O_TAIL]);
+
+    /* binds: 5 bits each, three to a pvar (max 21+21*32+21*1024 = 22197) */
+    set_pvar(SPVAR_16, oval[O_BIND_U]  + (oval[O_BIND_D]  << 5) + (oval[O_BIND_L] << 10));
+    set_pvar(SPVAR_17, oval[O_BIND_R]  + (oval[O_MBIND_U] << 5) + (oval[O_MBIND_D] << 10));
+    set_pvar(SPVAR_18, oval[O_MBIND_L] + (oval[O_MBIND_R] << 5));
+
+    /* four composed slots, 4 components each (max 4+40+320+1536 = 1900) */
+    set_pvar(SPVAR_19, ts_slot[0]  + (ts_slot[1]  << 3) + (ts_slot[2]  << 6) + (ts_slot[3]  << 9));
+    set_pvar(SPVAR_20, ts_slot[4]  + (ts_slot[5]  << 3) + (ts_slot[6]  << 6) + (ts_slot[7]  << 9));
+    set_pvar(SPVAR_21, ts_slot[8]  + (ts_slot[9]  << 3) + (ts_slot[10] << 6) + (ts_slot[11] << 9));
+    set_pvar(SPVAR_22, ts_slot[12] + (ts_slot[13] << 3) + (ts_slot[14] << 6) + (ts_slot[15] << 9));
+    return 0;
+}
+
+function load_all() {
+    lo_c = get_pvar(SPVAR_12, 0, 32000, 0);
+    if((lo_c >> 7) != 91) {
+        save_all();                 /* nothing valid stored - keep defaults */
+    } else {
+        oval[O_TS_SPIN] = lo_c & 127;
+
+        lo_c = get_pvar(SPVAR_1, 0, 32000, 0);
+        oval[O_AA_HIP]     = bitof(lo_c, 0);
+        oval[O_SNAP_ON]    = bitof(lo_c, 1);
+        oval[O_SCOPE_BAIT] = bitof(lo_c, 2);
+        oval[O_BR_REST]    = bitof(lo_c, 3);
+        oval[O_QS_ON]      = bitof(lo_c, 4);
+        oval[O_RESCOPE]    = bitof(lo_c, 5);
+        oval[O_BOLT_ON]    = bitof(lo_c, 6);
+        oval[O_RELCAN]     = bitof(lo_c, 7);
+        oval[O_RF_ON]      = bitof(lo_c, 8);
+        oval[O_AR_ON]      = bitof(lo_c, 9);
+        oval[O_SPRINT]     = bitof(lo_c, 10);
+        oval[O_YYCAN]      = bitof(lo_c, 11);
+        oval[O_DIVE]       = bitof(lo_c, 12);
+        oval[O_HAIR]       = bitof(lo_c, 13);
+
+        lo_c = get_pvar(SPVAR_2, 0, 32000, 0);
+        oval[O_TS_ON]  = bitof(lo_c, 0);
+        oval[O_ANIM]   = bitof(lo_c, 1);
+        oval[O_RUMBLE] = bitof(lo_c, 2);
+        oval[O_MELEE]  = bitof(lo_c, 3);
+
+        lo_c = get_pvar(SPVAR_3, 0, 32000, 0);
+        oval[O_AA_MODE]  =  lo_c        & 7;
+        oval[O_AA_WHEN]  = (lo_c >> 3)  & 3;
+        oval[O_SNAP_DIR] = (lo_c >> 5)  & 3;
+        oval[O_BREATH]   = (lo_c >> 7)  & 3;
+        oval[O_DROP]     = (lo_c >> 9)  & 3;
+        oval[O_JUMPS]    = (lo_c >> 11) & 3;
+
+        lo_c = get_pvar(SPVAR_4, 0, 32000, 0);
+        oval[O_TS_MOD]    =  lo_c       & 3;
+        oval[O_TS_DIR]    = (lo_c >> 2) & 3;
+        oval[O_IDLE_VIEW] = (lo_c >> 4) & 3;
+        oval[O_PRESET]    = (lo_c >> 6) & 7;
+
+        lo_c = get_pvar(SPVAR_5, 0, 32000, 0);
+        oval[O_AA_POWER]  = lo_c & 127;  oval[O_AA_SPEED] = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_6, 0, 32000, 0);
+        oval[O_SNAP_PULL] = lo_c & 127;  oval[O_SNAP_DLY] = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_7, 0, 32000, 0);
+        oval[O_BR_DLY]    = lo_c & 127;  oval[O_BR_HOLD]  = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_8, 0, 32000, 0);
+        oval[O_QS_DLY]    = lo_c & 127;  oval[O_QS_HOLD]  = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_9, 0, 32000, 0);
+        oval[O_RESC_DLY]  = lo_c & 127;  oval[O_BOLT_DLY] = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_10, 0, 32000, 0);
+        oval[O_RF_HOLD]   = lo_c & 127;  oval[O_RF_REST]  = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_11, 0, 32000, 0);
+        oval[O_AR_VERT]   = lo_c & 127;  oval[O_TRIGPT]   = (lo_c >> 7) & 127;
+
+        lo_c = get_pvar(SPVAR_13, 0, 32000, 0);
+        oval[O_TAP]  = lo_c & 127;   oval[O_GAP] = (lo_c >> 7) & 127;
+        lo_c = get_pvar(SPVAR_14, 0, 32000, 0);
+        oval[O_LEAD] = lo_c & 63;    oval[O_PRE] = (lo_c >> 6) & 63;
+        oval[O_TAIL] = get_pvar(SPVAR_15, 0, 40, 6);
+
+        lo_c = get_pvar(SPVAR_16, 0, 32000, 0);
+        oval[O_BIND_U]  =  lo_c        & 31;
+        oval[O_BIND_D]  = (lo_c >> 5)  & 31;
+        oval[O_BIND_L]  = (lo_c >> 10) & 31;
+        lo_c = get_pvar(SPVAR_17, 0, 32000, 0);
+        oval[O_BIND_R]  =  lo_c        & 31;
+        oval[O_MBIND_U] = (lo_c >> 5)  & 31;
+        oval[O_MBIND_D] = (lo_c >> 10) & 31;
+        lo_c = get_pvar(SPVAR_18, 0, 32000, 0);
+        oval[O_MBIND_L] =  lo_c       & 31;
+        oval[O_MBIND_R] = (lo_c >> 5) & 31;
+
+        lo_c = get_pvar(SPVAR_19, 0, 32000, 0);
+        ts_slot[0]  = lo_c & 7;  ts_slot[1]  = (lo_c >> 3) & 7;
+        ts_slot[2]  = (lo_c >> 6) & 7;  ts_slot[3]  = (lo_c >> 9) & 7;
+        lo_c = get_pvar(SPVAR_20, 0, 32000, 0);
+        ts_slot[4]  = lo_c & 7;  ts_slot[5]  = (lo_c >> 3) & 7;
+        ts_slot[6]  = (lo_c >> 6) & 7;  ts_slot[7]  = (lo_c >> 9) & 7;
+        lo_c = get_pvar(SPVAR_21, 0, 32000, 0);
+        ts_slot[8]  = lo_c & 7;  ts_slot[9]  = (lo_c >> 3) & 7;
+        ts_slot[10] = (lo_c >> 6) & 7;  ts_slot[11] = (lo_c >> 9) & 7;
+        lo_c = get_pvar(SPVAR_22, 0, 32000, 0);
+        ts_slot[12] = lo_c & 7;  ts_slot[13] = (lo_c >> 3) & 7;
+        ts_slot[14] = (lo_c >> 6) & 7;  ts_slot[15] = (lo_c >> 9) & 7;
+
+        clamp_all();
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   NUMBER RENDERING
+   ================================================================== */
+function print_num(nx, ny, nfont, ncol, nval) {
+    np_v   = nval;
+    np_neg = 0;
+    if(np_v < 0) { np_neg = 1; np_v = 0 - np_v; }
+
+    np_n = 0;
+    if(np_v == 0) {
+        np_dig[0] = 0;
+        np_n = 1;
+    }
+    while(np_v > 0) {
+        np_dig[np_n] = np_v % 10;
+        np_v = np_v / 10;
+        np_n = np_n + 1;
+    }
+
+    np_i = 1;
+    if(np_neg) {
+        putc_oled(1, CH_MINUS);
+        np_i = 2;
+    }
+    np_j = np_n;
+    while(np_j > 0) {
+        np_j = np_j - 1;
+        putc_oled(np_i, CH_ZERO + np_dig[np_j]);
+        np_i = np_i + 1;
+    }
+    puts_oled(nx, ny, nfont, np_i - 1, ncol);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED PRIMITIVES
+   ================================================================== */
+function sn(a) { return SIN64[((a % 64) + 64) % 64]; }
+function cs(a) { return SIN64[(((a + 16) % 64) + 64) % 64]; }
+
+/* exponential ease - the bigger k is, the lazier the approach */
+function ease(cur, tgt, k) {
+    if(cur == tgt) return tgt;
+    ez_d = (tgt - cur) / k;
+    if(ez_d == 0) {
+        if(tgt > cur) return cur + 1;
+        return cur - 1;
+    }
+    return cur + ez_d;
+}
+
+/* four corner brackets; animate ins to fly them in from the edges */
+function hud_frame(len, ins) {
+    line_oled(ins, ins, ins + len, ins, 1, OLED_WHITE);
+    line_oled(ins, ins, ins, ins + len, 1, OLED_WHITE);
+    line_oled(127 - ins - len, ins, 127 - ins, ins, 1, OLED_WHITE);
+    line_oled(127 - ins, ins, 127 - ins, ins + len, 1, OLED_WHITE);
+    line_oled(ins, 63 - ins - len, ins, 63 - ins, 1, OLED_WHITE);
+    line_oled(ins, 63 - ins, ins + len, 63 - ins, 1, OLED_WHITE);
+    line_oled(127 - ins, 63 - ins - len, 127 - ins, 63 - ins, 1, OLED_WHITE);
+    line_oled(127 - ins - len, 63 - ins, 127 - ins, 63 - ins, 1, OLED_WHITE);
+    return 0;
+}
+
+function ring_dotted(cx, cy, r, step) {
+    for(i_ring = 0; i_ring < 64; i_ring += step)
+        pixel_oled(cx + cs(i_ring) * r / 100, cy + sn(i_ring) * r / 100, OLED_WHITE);
+    return 0;
+}
+
+/* radial line; skip > 1 dots it out, which reads as a motion trail */
+function ray(cx, cy, ang, r0, r1, skip) {
+    for(i_ray = r0; i_ray <= r1; i_ray++) {
+        if(skip <= 1 || (i_ray % skip) == 0)
+            pixel_oled(cx + cs(ang) * i_ray / 100, cy + sn(ang) * i_ray / 100, OLED_WHITE);
+    }
+    return 0;
+}
+
+/* contact blip: lights only as the sweep passes over it, then fades */
+function blip(cx, cy, ang, r, sweep) {
+    sc_v = ((sweep % 64) - ang + 64) % 64;
+    if(sc_v < 7) {
+        sc_x = cx + cs(ang) * r / 100;
+        sc_y = cy + sn(ang) * r / 100;
+        rect_oled(sc_x, sc_y, 2, 2, 1, OLED_WHITE);
+        if(sc_v < 2) circle_oled(sc_x, sc_y, 4, 0, OLED_WHITE);
+    }
+    return 0;
+}
+
+/* torn bands + static. Fires on events, not constantly. */
+function draw_glitch() {
+    for(i_p = 0; i_p < 3; i_p++)
+        rect_oled(0, random(12, 46), 128, random(2, 5), 1, i_p % 2);
+    for(i_p = 0; i_p < 30; i_p++)
+        pixel_oled(random(0, 127), random(14, 48), OLED_WHITE);
+    return 0;
+}
+
+function draw_reticle(cx, cy, rr, gp) {
+    circle_oled(cx, cy, rr, 0, OLED_WHITE);
+    if(rr > 4) circle_oled(cx, cy, rr - 1, 0, OLED_WHITE);
+    line_oled(cx - rr, cy, cx - gp, cy, 1, OLED_WHITE);
+    line_oled(cx + gp, cy, cx + rr, cy, 1, OLED_WHITE);
+    line_oled(cx, cy - rr, cx, cy - gp, 1, OLED_WHITE);
+    line_oled(cx, cy + gp, cx, cy + rr, 1, OLED_WHITE);
+    pixel_oled(cx, cy, OLED_WHITE);
+    return 0;
+}
+
+function draw_target(gx, gy) {
+    circle_oled(gx, gy, 3, 1, OLED_WHITE);
+    rect_oled(gx - 3, gy + 4, 7, 9, 1, OLED_WHITE);
+    line_oled(gx - 3, gy + 6, gx - 6, gy + 11, 1, OLED_WHITE);
+    line_oled(gx + 3, gy + 6, gx + 6, gy + 11, 1, OLED_WHITE);
+    line_oled(gx - 2, gy + 13, gx - 4, gy + 19, 1, OLED_WHITE);
+    line_oled(gx + 2, gy + 13, gx + 4, gy + 19, 1, OLED_WHITE);
+    return 0;
+}
+
+function draw_hit(hx, hy) {
+    line_oled(hx - 10, hy - 10, hx - 4, hy - 4, 1, OLED_WHITE);
+    line_oled(hx + 10, hy - 10, hx + 4, hy - 4, 1, OLED_WHITE);
+    line_oled(hx - 10, hy + 10, hx - 4, hy + 4, 1, OLED_WHITE);
+    line_oled(hx + 10, hy + 10, hx + 4, hy + 4, 1, OLED_WHITE);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - BOOT
+   ================================================================== */
+function draw_boot() {
+    cls_oled(OLED_BLACK);
+
+    if(boot_t < 1300) {
+        /* --- ACQUIRE: rings grow, sweep rotates with a dotted trail,
+               contacts light up as it passes over them --- */
+        sc_r = boot_t / 42;
+        if(sc_r > 30) sc_r = 30;
+        ring_dotted(64, 32, sc_r, 4);
+        if(sc_r > 14) ring_dotted(64, 32, 14, 3);
+        if(sc_r > 23) ring_dotted(64, 32, 23, 3);
+        line_oled(34, 32, 94, 32, 1, OLED_WHITE);
+        line_oled(64, 4, 64, 60, 1, OLED_WHITE);
+
+        sc_a = boot_t * 2 / 33;
+        for(i_p = 0; i_p < 5; i_p++) {
+            if(i_p == 0) ray(64, 32, sc_a, 2, sc_r, 1);
+            else ray(64, 32, sc_a - i_p - i_p, 2, sc_r, i_p + 1);
+        }
+        blip(64, 32, 11, 21, sc_a);
+        blip(64, 32, 27, 13, sc_a);
+        blip(64, 32, 43, 27, sc_a);
+        blip(64, 32, 56, 18, sc_a);
+
+    } else if(boot_t < 1650) {
+        /* --- LOCK: rings collapse into the target --- */
+        sc_v = 1650 - boot_t;
+        ring_dotted(64, 32, 30 * sc_v / 350, 3);
+        ring_dotted(64, 32, 18 * sc_v / 350, 2);
+        sc_r = 7 - (7 * sc_v / 350);
+        if(sc_r < 1) sc_r = 1;
+        circle_oled(64, 32, sc_r, 1, OLED_WHITE);
+        hud_frame(9, 2 + (18 * sc_v / 350));
+
+    } else if(boot_t < 1900) {
+        /* --- TARGET: brackets settle, reticle on the man --- */
+        hud_frame(9, 2);
+        draw_target(64, 22);
+        draw_reticle(64, 32, 16, 4);
+
+    } else if(boot_t < 2050) {
+        rect_oled(0, 0, 128, 64, 1, OLED_WHITE);      /* muzzle flash */
+
+    } else if(boot_t < 2700) {
+        hud_frame(9, 2);
+        draw_reticle(64, 32, 16, 4);
+        draw_hit(64, 32);
+        if(boot_t < 2200) draw_glitch();
+
+    } else {
+        hud_frame(9, 2);
+        rect_oled(0, 14, 128, 14, 1, OLED_WHITE);
+        print(31, 16, OLED_FONT_MEDIUM, OLED_BLACK, T_TITLE[0]);
+        print(22, 34, OLED_FONT_SMALL, OLED_WHITE, T_VER[0]);
+        sc_v = ((boot_t - 2700) * 110) / 900;
+        if(sc_v > 110) sc_v = 110;
+        rect_oled(8, 46, 112, 7, 0, OLED_WHITE);
+        rect_oled(10, 48, sc_v, 3, 1, OLED_WHITE);
+    }
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - IDLE
+   ================================================================== */
+function draw_idle() {
+    cls_oled(OLED_BLACK);
+
+    rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+    print(28, 2, OLED_FONT_SMALL, OLED_BLACK, T_SUB[0]);
+    if(oval[O_ANIM]) {
+        id_s = (anim % 26) * 6;
+        rect_oled(id_s, 0, 5, 12, 1, OLED_BLACK);
+    }
+
+    if(master_off) {
+        rect_oled(4, 22, 120, 20, 0, OLED_WHITE);
+        print(20, 27, OLED_FONT_MEDIUM, OLED_WHITE, T_OFF[0]);
+        print(10, 50, OLED_FONT_SMALL, OLED_WHITE, T_REARM[0]);
+        return 0;
+    }
+
+    id_v = oval[O_IDLE_VIEW];
+    if(id_v == 0) id_v = 1 + ((anim / 80) % 2);
+
+    if(id_v == 1) draw_view_scope();
+    else draw_view_binds();
+    return 0;
+}
+
+/* ------------------------------------------------------------------
+   LIVE RANGE. A runner crosses the board, the crosshair EASES onto
+   him, locks, fires, and he ragdolls into falling debris.
+   The easing speed is driven by AA POWER, so the screen is actually
+   showing you how aggressive your aim assist is set.
+   ------------------------------------------------------------------ */
+function idle_update() {
+    /* crosshair chases the runner; higher AA POWER = snappier chase */
+    ease_k = 8 - (oval[O_AA_POWER] / 7);
+    if(ease_k < 2) ease_k = 2;
+    if(ease_k > 9) ease_k = 9;
+
+    if(run_st == 0) {
+        spawn_t = spawn_t - 50;
+        if(spawn_t <= 0) {
+            run_st  = 1;
+            run_leg = 0;
+            lock_t  = 0;
+            run_dir = 1;
+            if(random(0, 1)) run_dir = -1;
+            if(run_dir > 0) run_x = -12 * FP;
+            else run_x = 140 * FP;
+            run_y = random(34, 44);
+        }
+    }
+
+    if(run_st == 1) {
+        run_x   = run_x + (run_dir * 24);
+        run_leg = run_leg + 1;
+        cx_t    = run_x;
+        cy_t    = (run_y - 9) * FP;
+        sc_v    = (cx_p - cx_t) / FP;
+        if(sc_v < 0) sc_v = 0 - sc_v;
+        if(sc_v < 3) lock_t = lock_t + 50;
+        else lock_t = 0;
+        if(lock_t > 300) {
+            run_st   = 2;
+            dead_t   = 0;
+            fire_t   = 200;
+            glitch_t = 150;
+            for(i_p = 0; i_p < NPART; i_p++) {
+                pa_x[i_p]  = run_x;
+                pa_y[i_p]  = (run_y - 6) * FP;
+                pa_vx[i_p] = random(0, 60) - 30;
+                pa_vy[i_p] = 0 - random(20, 70);
+                pa_l[i_p]  = 900;
+            }
+        }
+        if(run_x < (0 - 20) * FP || run_x > 148 * FP) {
+            run_st  = 0;
+            spawn_t = random(400, 1400);
+        }
+    } else if(run_st == 2) {
+        dead_t = dead_t + 50;
+        if(dead_t > 700) {
+            run_st  = 0;
+            spawn_t = random(400, 1400);
+        }
+    }
+
+    for(i_p = 0; i_p < NPART; i_p++) {
+        if(pa_l[i_p] > 0) {
+            pa_x[i_p]  = pa_x[i_p] + pa_vx[i_p];
+            pa_y[i_p]  = pa_y[i_p] + pa_vy[i_p];
+            pa_vy[i_p] = pa_vy[i_p] + 6;          /* gravity */
+            pa_l[i_p]  = pa_l[i_p] - 50;
+        }
+    }
+
+    cx_p = ease(cx_p, cx_t, ease_k);
+    cy_p = ease(cy_p, cy_t, ease_k);
+    if(fire_t > 0) fire_t = fire_t - 50;
+    return 0;
+}
+
+function draw_view_scope() {
+    if(oval[O_ANIM]) idle_update();
+
+    hud_frame(8, 2);
+
+    /* --- the runner --- */
+    if(run_st == 1) {
+        sc_x = run_x / FP;
+        circle_oled(sc_x, run_y - 10, 2, 1, OLED_WHITE);
+        line_oled(sc_x, run_y - 8, sc_x, run_y - 3, 1, OLED_WHITE);
+        if((run_leg / 3) % 2) {
+            line_oled(sc_x, run_y - 3, sc_x - 3, run_y + 1, 1, OLED_WHITE);
+            line_oled(sc_x, run_y - 3, sc_x + 3, run_y + 1, 1, OLED_WHITE);
+            line_oled(sc_x, run_y - 7, sc_x + 3, run_y - 5, 1, OLED_WHITE);
+        } else {
+            line_oled(sc_x, run_y - 3, sc_x - 1, run_y + 1, 1, OLED_WHITE);
+            line_oled(sc_x, run_y - 3, sc_x + 4, run_y + 1, 1, OLED_WHITE);
+            line_oled(sc_x, run_y - 7, sc_x - 3, run_y - 5, 1, OLED_WHITE);
+        }
+    } else if(run_st == 2) {
+        sc_x = run_x / FP;                         /* ragdolled flat */
+        line_oled(sc_x - 5, run_y, sc_x + 5, run_y, 1, OLED_WHITE);
+        circle_oled(sc_x - 7, run_y - 1, 2, 1, OLED_WHITE);
+    }
+
+    /* --- debris --- */
+    for(i_p = 0; i_p < NPART; i_p++) {
+        if(pa_l[i_p] > 0)
+            pixel_oled(pa_x[i_p] / FP, pa_y[i_p] / FP, OLED_WHITE);
+    }
+
+    /* --- crosshair, brackets tighten as the lock builds --- */
+    sc_x = cx_p / FP;
+    sc_y = cy_p / FP;
+    sc_r = 10;
+    if(lock_t > 0) sc_r = 10 - (lock_t / 100);
+    if(sc_r < 6) sc_r = 6;
+    circle_oled(sc_x, sc_y, sc_r, 0, OLED_WHITE);
+    line_oled(sc_x - sc_r - 4, sc_y, sc_x - sc_r - 1, sc_y, 1, OLED_WHITE);
+    line_oled(sc_x + sc_r + 1, sc_y, sc_x + sc_r + 4, sc_y, 1, OLED_WHITE);
+    line_oled(sc_x, sc_y - sc_r - 4, sc_x, sc_y - sc_r - 1, 1, OLED_WHITE);
+    line_oled(sc_x, sc_y + sc_r + 1, sc_x, sc_y + sc_r + 4, 1, OLED_WHITE);
+    if(lock_t > 300) draw_hit(sc_x, sc_y);
+
+    /* --- muzzle flash --- */
+    if(fire_t > 0) {
+        for(i_p = 0; i_p < 64; i_p += 8)
+            ray(sc_x, sc_y, i_p, 3, 9, 1);
+    }
+
+    /* --- rolling scanline --- */
+    scan_y = scan_y + 3;
+    if(scan_y > 52) scan_y = 12;
+    if(scan_y >= 14 && scan_y < 48) {
+        for(i_p = 0; i_p < 128; i_p += 3) pixel_oled(i_p, scan_y, OLED_WHITE);
+    }
+
+    if(glitch_t > 0) {
+        glitch_t = glitch_t - 50;
+        draw_glitch();
+    }
+
+    chip_x = 1;
+    if(oval[O_AA_MODE]) chip(0);
+    if(oval[O_BREATH])  chip(1);
+    if(oval[O_QS_ON])   chip(2);
+    if(oval[O_RESCOPE]) chip(3);
+    if(oval[O_BOLT_ON]) chip(4);
+    if(oval[O_TS_ON])   chip(5);
+    if(oval[O_RF_ON])   chip(6);
+    return 0;
+}
+
+function draw_view_binds() {
+    print(4, 16, OLED_FONT_SMALL, OLED_WHITE, DIRL[0]);
+    print(46, 16, OLED_FONT_SMALL, OLED_WHITE, V_MACRO[oval[O_BIND_U]]);
+    print(4, 27, OLED_FONT_SMALL, OLED_WHITE, DIRL[1]);
+    print(46, 27, OLED_FONT_SMALL, OLED_WHITE, V_MACRO[oval[O_BIND_D]]);
+    print(4, 38, OLED_FONT_SMALL, OLED_WHITE, DIRL[2]);
+    print(46, 38, OLED_FONT_SMALL, OLED_WHITE, V_MACRO[oval[O_BIND_L]]);
+    print(4, 49, OLED_FONT_SMALL, OLED_WHITE, DIRL[3]);
+    print(46, 49, OLED_FONT_SMALL, OLED_WHITE, V_MACRO[oval[O_BIND_R]]);
+
+    id_i = (anim / 8) % 4;
+    if(!oval[O_ANIM]) id_i = 9;
+    rect_oled(103, 24, 8, 8, 0, OLED_WHITE);
+    rect_oled(103, 40, 8, 8, 0, OLED_WHITE);
+    rect_oled(95,  32, 8, 8, 0, OLED_WHITE);
+    rect_oled(111, 32, 8, 8, 0, OLED_WHITE);
+    rect_oled(103, 32, 8, 8, 0, OLED_WHITE);
+    if(id_i == 0) rect_oled(103, 24, 8, 8, 1, OLED_WHITE);
+    if(id_i == 1) rect_oled(103, 40, 8, 8, 1, OLED_WHITE);
+    if(id_i == 2) rect_oled(95,  32, 8, 8, 1, OLED_WHITE);
+    if(id_i == 3) rect_oled(111, 32, 8, 8, 1, OLED_WHITE);
+    return 0;
+}
+
+function chip(ci) {
+    rect_oled(chip_x, 53, 16, 10, 1, OLED_WHITE);
+    print(chip_x + 1, 55, OLED_FONT_SMALL, OLED_BLACK, CHIP[ci]);
+    chip_x = chip_x + 18;
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - NOTIFICATIONS
+   ================================================================== */
+function draw_notif() {
+    cls_oled(OLED_BLACK);
+    rect_oled(0, 0, 128, 64, 0, OLED_WHITE);
+    rect_oled(3, 3, 122, 58, 0, OLED_WHITE);
+    if(notif_id == 0) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[0]);
+    if(notif_id == 1) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[1]);
+    if(notif_id == 2) print(31, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[2]);
+    if(notif_id == 3) print(31, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[3]);
+    if(notif_id == 4) print(36, 26, OLED_FONT_MEDIUM, OLED_WHITE, MSG[4]);
+    return 0;
+}
+
+
+/* ==================================================================
+   OLED - MENU
+   ================================================================== */
+function draw_menu() {
+    cls_oled(OLED_BLACK);
+    dm_base = pg_first[m_page];
+    dm_n    = pg_count[m_page];
+
+    rect_oled(0, 0, 128, 12, 1, OLED_WHITE);
+    print(3, 2, OLED_FONT_SMALL, OLED_BLACK, PGN[m_page]);
+
+    /* page counter "n/15" */
+    if(m_page >= 9) {
+        putc_oled(1, CH_ZERO + 1);
+        putc_oled(2, CH_ZERO + ((m_page + 1) % 10));
+        dm_c = 3;
+    } else {
+        putc_oled(1, CH_ZERO + m_page + 1);
+        dm_c = 2;
+    }
+    putc_oled(dm_c,     CH_SLASH);
+    putc_oled(dm_c + 1, CH_ZERO + 1);
+    putc_oled(dm_c + 2, CH_ZERO + 5);
+    puts_oled(88, 2, OLED_FONT_SMALL, dm_c + 2, OLED_BLACK);
+
+    dm_i = 0;
+    while(dm_i < dm_n) {
+        dm_y  = 15 + (dm_i * 10);
+        dm_id = dm_base + dm_i;
+        if(dm_i == m_item) {
+            rect_oled(0, dm_y - 1, 120, 10, 1, OLED_WHITE);
+            print(3, dm_y, OLED_FONT_SMALL, OLED_BLACK, LBL[dm_id]);
+            draw_value(dm_id, 76, dm_y, OLED_BLACK);
+        } else {
+            print(3, dm_y, OLED_FONT_SMALL, OLED_WHITE, LBL[dm_id]);
+            draw_value(dm_id, 76, dm_y, OLED_WHITE);
+        }
+        dm_i = dm_i + 1;
+    }
+
+    rect_oled(121, 14, 5, 50, 0, OLED_WHITE);
+    rect_oled(121, 14 + ((m_item * 46) / dm_n), 5, (46 / dm_n) + 4, 1, OLED_WHITE);
+    return 0;
+}
+
+function draw_value(id, vx, vy, vc) {
+    dv_t = otyp[id];
+    if(dv_t == T_NUM)     print_num(vx, vy, OLED_FONT_SMALL, vc, oval[id]);
+    if(dv_t == T_ONOFF)   print(vx, vy, OLED_FONT_SMALL, vc, V_ONOFF[oval[id]]);
+    if(dv_t == T_AAMODE)  print(vx, vy, OLED_FONT_SMALL, vc, V_AAMODE[oval[id]]);
+    if(dv_t == T_WHEN)    print(vx, vy, OLED_FONT_SMALL, vc, V_WHEN[oval[id]]);
+    if(dv_t == T_DIR4)    print(vx, vy, OLED_FONT_SMALL, vc, V_DIR4[oval[id]]);
+    if(dv_t == T_BREATH)  print(vx, vy, OLED_FONT_SMALL, vc, V_BREATH[oval[id]]);
+    if(dv_t == T_TRIG)    print(vx, vy, OLED_FONT_SMALL, vc, V_TRIG[oval[id]]);
+    if(dv_t == T_TSMOD)   print(vx, vy, OLED_FONT_SMALL, vc, V_TSMOD[oval[id]]);
+    if(dv_t == T_SPINDIR) print(vx, vy, OLED_FONT_SMALL, vc, V_SPINDIR[oval[id]]);
+    if(dv_t == T_IDLE)    print(vx, vy, OLED_FONT_SMALL, vc, V_IDLE[oval[id]]);
+    if(dv_t == T_MACRO)   print(vx, vy, OLED_FONT_SMALL, vc, V_MACRO[oval[id]]);
+    if(dv_t == T_PRE)     print(vx, vy, OLED_FONT_SMALL, vc, V_PRE[oval[id]]);
+    if(dv_t == T_CANCEL)  print(vx, vy, OLED_FONT_SMALL, vc, V_CANCEL[oval[id]]);
+    if(dv_t == T_SPINAMT) print(vx, vy, OLED_FONT_SMALL, vc, V_SPINAMT[oval[id]]);
+    if(dv_t == T_POST)    print(vx, vy, OLED_FONT_SMALL, vc, V_POST[oval[id]]);
+    if(dv_t == T_SLOT)    print(vx, vy, OLED_FONT_SMALL, vc, V_SLOT[oval[id]]);
+    if(dv_t == T_PRESET)  print(vx, vy, OLED_FONT_SMALL, vc, V_PRESET[oval[id]]);
+    if(dv_t == T_ACT)     print(vx, vy, OLED_FONT_SMALL, vc, T_GO[0]);
+    return 0;
+}

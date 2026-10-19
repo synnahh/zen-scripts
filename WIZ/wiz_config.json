@@ -1,0 +1,29 @@
+{
+  "lights": [
+    {
+      "name": "Light 1",
+      "ip": "192.168.0.151",
+      "id": "light1",
+      "location": "Living Room"
+    },
+    {
+      "name": "Light 2",
+      "ip": "192.168.0.208",
+      "id": "light2",
+      "location": "Bedroom"
+    },
+    {
+      "name": "Light 3",
+      "ip": "192.168.0.243",
+      "id": "light3",
+      "location": "Kitchen"
+    },
+    {
+      "name": "Light 4",
+      "ip": "192.168.0.140",
+      "id": "light4",
+      "location": "Office"
+    }
+  ],
+  "port": 38899
+}

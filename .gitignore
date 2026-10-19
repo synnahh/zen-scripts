@@ -1,0 +1,10 @@
+# Compiled cheat binaries and unverified executables are kept off GitHub
+PZ/
+*.exe
+*.dll
+
+# Local-only noise
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
